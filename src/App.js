@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud } from 'lucide-react';
 import { initializeApp } from "firebase/app";
-import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, getDocs } from "firebase/firestore";
 
-// ✅ YOUR FIREBASE CONFIG
 const firebaseConfig = {
   apiKey: "AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc",
   authDomain: "kaapfi-pos.firebaseapp.com",
@@ -15,11 +13,9 @@ const firebaseConfig = {
   measurementId: "G-ZC3CPTHBYG"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// Function to save order to Firebase
 async function saveOrderToFirebase(order) {
   try {
     const docRef = await addDoc(collection(db, "orders"), {
@@ -34,10 +30,8 @@ async function saveOrderToFirebase(order) {
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
     });
-    console.log("✅ Order saved to Firebase:", docRef.id);
     return true;
   } catch (error) {
-    console.error("❌ Error saving order:", error);
     return false;
   }
 }
@@ -46,13 +40,11 @@ export default function CafePOS() {
   const [orders, setOrders] = useState([]);
   const [currentOrder, setCurrentOrder] = useState([]);
   const [activeTab, setActiveTab] = useState('order');
-  const [showNewItemForm, setShowNewItemForm] = useState(false);
+  const [menuItems, setMenuItems] = useState([]);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [customerName, setCustomerName] = useState('');
   const [firebaseOrders, setFirebaseOrders] = useState([]);
-  const [firebaseStatus, setFirebaseStatus] = useState('✅ Firebase Connected');
 
-  // Default Menu
   const defaultMenu = [
     { id: 1, name: 'Espresso', price: 50, category: 'Coffee' },
     { id: 2, name: 'Americano', price: 60, category: 'Coffee' },
@@ -73,7 +65,6 @@ export default function CafePOS() {
     { id: 17, name: 'Salad', price: 150, category: 'Food' },
   ];
 
-  // Load data
   useEffect(() => {
     const saved = localStorage.getItem('cafePOS');
     if (saved) {
@@ -85,7 +76,6 @@ export default function CafePOS() {
     }
   }, []);
 
-  // Load Firebase orders
   useEffect(() => {
     const loadFirebaseOrders = async () => {
       try {
@@ -97,19 +87,15 @@ export default function CafePOS() {
         setFirebaseOrders(allOrders);
       } catch (error) {
         console.log("Error loading Firebase orders:", error);
-        setFirebaseStatus('❌ Firebase Connection Error');
       }
     };
-    
     loadFirebaseOrders();
   }, []);
 
-  // Save data
   useEffect(() => {
     localStorage.setItem('cafePOS', JSON.stringify({ menuItems, orders }));
   }, [menuItems, orders]);
 
-  // Add item to current order
   const addToOrder = (item) => {
     const existing = currentOrder.find(o => o.id === item.id);
     if (existing) {
@@ -121,12 +107,10 @@ export default function CafePOS() {
     }
   };
 
-  // Remove item from order
   const removeFromOrder = (id) => {
     setCurrentOrder(currentOrder.filter(o => o.id !== id));
   };
 
-  // Update quantity
   const updateQuantity = (id, qty) => {
     if (qty <= 0) {
       removeFromOrder(id);
@@ -137,12 +121,10 @@ export default function CafePOS() {
     }
   };
 
-  // Calculate totals
   const subtotal = currentOrder.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-  const tax = subtotal * 0.05; // 5% tax
+  const tax = subtotal * 0.05;
   const total = subtotal + tax;
 
-  // Complete order
   const completeOrder = async () => {
     if (currentOrder.length === 0) {
       alert('Please add items to order');
@@ -162,13 +144,8 @@ export default function CafePOS() {
       time: new Date().toLocaleTimeString(),
     };
 
-    // Save to local storage
     setOrders([...orders, order]);
-    
-    // Save to Firebase
     const saved = await saveOrderToFirebase(order);
-    
-    // Clear form
     setCurrentOrder([]);
     setCustomerName('');
     setPaymentMethod('cash');
@@ -180,84 +157,37 @@ export default function CafePOS() {
     }
   };
 
-  // Print KOT
   const printKOT = () => {
     if (currentOrder.length === 0) {
       alert('No items to print');
       return;
     }
-
-    const kot = `
-═══════════════════════════
-        KITCHEN ORDER TICKET
-═══════════════════════════
-Time: ${new Date().toLocaleTimeString()}
-Customer: ${customerName || 'Walk-in'}
-───────────────────────────
-${currentOrder.map(item => `
-${item.name} x${item.quantity}
-`).join('')}
-───────────────────────────
-Items: ${currentOrder.reduce((sum, item) => sum + item.quantity, 0)}
-═══════════════════════════
-    `;
-
+    const kot = `\n═══════════════════════════\n        KITCHEN ORDER TICKET\n═══════════════════════════\nTime: ${new Date().toLocaleTimeString()}\nCustomer: ${customerName || 'Walk-in'}\n───────────────────────────\n${currentOrder.map(item => `${item.name} x${item.quantity}\n`).join('')}───────────────────────────\nItems: ${currentOrder.reduce((sum, item) => sum + item.quantity, 0)}\n═══════════════════════════\n    `;
     const printWindow = window.open('', '', 'height=400,width=600');
     printWindow.document.write('<pre style="font-family: monospace; font-size: 12px;">' + kot + '</pre>');
     printWindow.print();
     printWindow.close();
   };
 
-  // Print Bill
   const printBill = () => {
     if (currentOrder.length === 0) {
       alert('No items to print');
       return;
     }
-
-    const bill = `
-╔═══════════════════════════════╗
-║     COFFEE90 CAFE - BILL      ║
-╚═══════════════════════════════╝
-Date: ${new Date().toLocaleDateString()}
-Time: ${new Date().toLocaleTimeString()}
-Customer: ${customerName || 'Walk-in'}
-───────────────────────────────
-ITEM                   QTY  PRICE
-───────────────────────────────
-${currentOrder.map(item => `
-${item.name.padEnd(18)} x${item.quantity.toString().padStart(2)} ₹${(item.price * item.quantity).toString().padStart(4)}
-`).join('')}
-───────────────────────────────
-Subtotal:                  ₹${subtotal}
-Tax (5%):                  ₹${tax.toFixed(0)}
-───────────────────────────────
-TOTAL:                     ₹${total.toFixed(0)}
-═════════════════════════════════
-Payment: ${paymentMethod.toUpperCase()}
-═════════════════════════════════
-        Thank You!
-  Please visit again soon ☕
-═════════════════════════════════
-    `;
-
+    const bill = `\n╔═══════════════════════════════╗\n║     COFFEE90 CAFE - BILL      ║\n╚═══════════════════════════════╝\nDate: ${new Date().toLocaleDateString()}\nTime: ${new Date().toLocaleTimeString()}\nCustomer: ${customerName || 'Walk-in'}\n───────────────────────────────\nITEM                   QTY  PRICE\n───────────────────────────────\n${currentOrder.map(item => `${item.name.padEnd(18)} x${item.quantity.toString().padStart(2)} ₹${(item.price * item.quantity).toString().padStart(4)}\n`).join('')}───────────────────────────────\nSubtotal:                  ₹${subtotal}\nTax (5%):                  ₹${tax.toFixed(0)}\n───────────────────────────────\nTOTAL:                     ₹${total.toFixed(0)}\n═════════════════════════════════\nPayment: ${paymentMethod.toUpperCase()}\n═════════════════════════════════\n        Thank You!\n  Please visit again soon ☕\n═════════════════════════════════\n    `;
     const printWindow = window.open('', '', 'height=500,width=400');
     printWindow.document.write('<pre style="font-family: monospace; font-size: 11px; margin: 10px;">' + bill + '</pre>');
     printWindow.print();
     printWindow.close();
   };
 
-  // Get unique categories
   const categories = [...new Set(menuItems.map(item => item.category))];
-
-  // Daily stats
   const todayOrders = orders.filter(o => o.date === new Date().toLocaleDateString());
   const todayRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
   const todayItems = todayOrders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0);
 
   return (
     <div style={{ background: '#0a0a0a', minHeight: '100vh', color: '#fff', fontFamily: "'Courier New', monospace" }}>
-      {/* Header */}
       <header style={{ background: '#1a1a1a', borderBottom: '3px solid #d4a574', padding: '16px 24px' }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1 style={{ margin: '0', fontSize: '28px', fontWeight: 'bold', color: '#d4a574' }}>☕ COFFEE90 POS</h1>
@@ -265,14 +195,12 @@ Payment: ${paymentMethod.toUpperCase()}
             <div>Orders: {todayOrders.length}</div>
             <div>Revenue: ₹{todayRevenue}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#10b981' }}>
-              <Cloud size={14} /> {firebaseStatus}
+              <Cloud size={14} /> ✅ Firebase Connected
             </div>
-            <div>{new Date().toLocaleTimeString()}</div>
           </div>
         </div>
       </header>
 
-      {/* Navigation */}
       <nav style={{ background: '#1a1a1a', display: 'flex', borderBottom: '1px solid #333', padding: '0' }}>
         {['order', 'bills', 'reports', 'firebase', 'menu'].map(tab => (
           <button
@@ -302,13 +230,10 @@ Payment: ${paymentMethod.toUpperCase()}
 
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '20px', display: 'grid', gridTemplateColumns: activeTab === 'order' ? '1fr 400px' : '1fr', gap: '20px' }}>
 
-        {/* ORDER TAB */}
         {activeTab === 'order' && (
           <>
-            {/* Menu */}
             <div>
               <h2 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#d4a574', textTransform: 'uppercase' }}>Select Items</h2>
-              
               {categories.map(category => (
                 <div key={category} style={{ marginBottom: '24px' }}>
                   <h3 style={{ margin: '0 0 12px 0', fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold' }}>{category}</h3>
@@ -349,7 +274,6 @@ Payment: ${paymentMethod.toUpperCase()}
               ))}
             </div>
 
-            {/* Current Order */}
             <div style={{ background: '#1a1a1a', border: '2px solid #d4a574', borderRadius: '4px', padding: '16px', height: 'fit-content', position: 'sticky', top: '20px' }}>
               <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#d4a574', fontWeight: 'bold', textTransform: 'uppercase' }}>CURRENT ORDER</h3>
 
@@ -361,7 +285,6 @@ Payment: ${paymentMethod.toUpperCase()}
                 style={{ width: '100%', padding: '8px', background: '#333', border: '1px solid #555', color: '#fff', fontSize: '11px', marginBottom: '12px', borderRadius: '3px', boxSizing: 'border-box' }}
               />
 
-              {/* Order Items */}
               <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '16px', borderBottom: '1px solid #333', paddingBottom: '16px' }}>
                 {currentOrder.length === 0 ? (
                   <p style={{ margin: '0', color: '#666', fontSize: '11px', textAlign: 'center', paddingTop: '20px' }}>No items added</p>
@@ -388,7 +311,6 @@ Payment: ${paymentMethod.toUpperCase()}
                 )}
               </div>
 
-              {/* Totals */}
               {currentOrder.length > 0 && (
                 <>
                   <div style={{ fontSize: '11px', marginBottom: '8px', borderBottom: '1px solid #333', paddingBottom: '8px' }}>
@@ -406,7 +328,6 @@ Payment: ${paymentMethod.toUpperCase()}
                     <span>₹{total.toFixed(0)}</span>
                   </div>
 
-                  {/* Payment Method */}
                   <div style={{ marginBottom: '12px', fontSize: '11px' }}>
                     <label style={{ display: 'block', marginBottom: '6px', color: '#aaa', fontWeight: 'bold' }}>Payment:</label>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -432,7 +353,6 @@ Payment: ${paymentMethod.toUpperCase()}
                     </div>
                   </div>
 
-                  {/* Buttons */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                     <button
                       onClick={printKOT}
@@ -491,7 +411,6 @@ Payment: ${paymentMethod.toUpperCase()}
           </>
         )}
 
-        {/* BILLS TAB */}
         {activeTab === 'bills' && (
           <div>
             <h2 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#d4a574', textTransform: 'uppercase' }}>Today's Orders</h2>
@@ -520,12 +439,9 @@ Payment: ${paymentMethod.toUpperCase()}
           </div>
         )}
 
-        {/* REPORTS TAB */}
         {activeTab === 'reports' && (
           <div>
             <h2 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#d4a574', textTransform: 'uppercase' }}>Daily Reports</h2>
-            
-            {/* Today's Summary */}
             <div style={{ background: '#1a1a1a', border: '2px solid #d4a574', padding: '16px', marginBottom: '20px', borderRadius: '4px' }}>
               <h3 style={{ margin: '0 0 12px 0', color: '#d4a574', fontWeight: 'bold' }}>Today's Summary</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', fontSize: '12px' }}>
@@ -547,41 +463,15 @@ Payment: ${paymentMethod.toUpperCase()}
                 </div>
               </div>
             </div>
-
-            {/* Top Items */}
-            {todayOrders.length > 0 && (
-              <div style={{ background: '#1a1a1a', border: '1px solid #333', padding: '16px', borderRadius: '4px' }}>
-                <h3 style={{ margin: '0 0 12px 0', color: '#d4a574', fontWeight: 'bold', fontSize: '12px' }}>Top Items</h3>
-                {(() => {
-                  const itemCounts = {};
-                  todayOrders.forEach(order => {
-                    order.items.forEach(item => {
-                      itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
-                    });
-                  });
-                  return Object.entries(itemCounts)
-                    .sort((a, b) => b[1] - a[1])
-                    .slice(0, 5)
-                    .map(([name, qty]) => (
-                      <div key={name} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', padding: '8px', background: '#0a0a0a', borderRadius: '3px', fontSize: '11px' }}>
-                        <span>{name}</span>
-                        <span style={{ color: '#d4a574', fontWeight: 'bold' }}>{qty} sold</span>
-                      </div>
-                    ));
-                })()}
-              </div>
-            )}
           </div>
         )}
 
-        {/* FIREBASE/CLOUD TAB */}
         {activeTab === 'firebase' && (
           <div>
             <h2 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#d4a574', textTransform: 'uppercase' }}>☁️ Cloud Orders (Firebase)</h2>
             <p style={{ color: '#aaa', fontSize: '12px', marginBottom: '16px' }}>
-              All orders are automatically saved to Firebase cloud. Reload this page to see latest orders.
+              All orders automatically saved to Firebase cloud.
             </p>
-            
             {firebaseOrders.length === 0 ? (
               <p style={{ color: '#666' }}>No orders in cloud yet</p>
             ) : (
@@ -609,11 +499,9 @@ Payment: ${paymentMethod.toUpperCase()}
           </div>
         )}
 
-        {/* MENU TAB */}
         {activeTab === 'menu' && (
           <div>
             <h2 style={{ margin: '0 0 16px 0', fontSize: '16px', color: '#d4a574', textTransform: 'uppercase' }}>Manage Menu</h2>
-            
             {menuItems.map(item => (
               <div key={item.id} style={{ background: '#1a1a1a', border: '1px solid #333', padding: '12px', marginBottom: '8px', borderRadius: '4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px' }}>
                 <div>
