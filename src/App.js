@@ -34,19 +34,15 @@ const defaultSettings = {
   receiptSize: "80mm",
 };
 
-// ACTUAL KAAPFI MENU
 const defaultMenu = [
-  // KAAPFI (HOT)
   { id: 1, name: 'Milk Filter Coffee', price: 20, category: 'Kaapfi Hot', emoji: '☕' },
   { id: 2, name: 'Black Filter Coffee', price: 20, category: 'Kaapfi Hot', emoji: '☕' },
-  // ICED FILTER KAAFI
   { id: 3, name: 'Classic Iced Filter', price: 110, category: 'Iced Filter', emoji: '🧊' },
   { id: 4, name: 'Hazelnut Iced Filter', price: 120, category: 'Iced Filter', emoji: '🧊' },
   { id: 5, name: 'Vanilla Iced Filter', price: 125, category: 'Iced Filter', emoji: '🧊' },
   { id: 6, name: 'Salted Caramel Iced', price: 120, category: 'Iced Filter', emoji: '🧊' },
   { id: 7, name: 'Rose Iced Filter', price: 125, category: 'Iced Filter', emoji: '🌹' },
   { id: 8, name: 'Strawberry Iced', price: 125, category: 'Iced Filter', emoji: '🍓' },
-  // COLD BREW
   { id: 9, name: 'Classic Cold Brew', price: 100, category: 'Cold Brew', emoji: '❄️' },
   { id: 10, name: 'Cranberry Cold Brew', price: 120, category: 'Cold Brew', emoji: '🔴' },
   { id: 11, name: 'Orange Cold Brew', price: 120, category: 'Cold Brew', emoji: '🍊' },
@@ -56,13 +52,11 @@ const defaultMenu = [
   { id: 15, name: 'Kaccha Aam Brew', price: 125, category: 'Cold Brew', emoji: '🥭' },
   { id: 16, name: 'Kokum Brew', price: 125, category: 'Cold Brew', emoji: '🍒' },
   { id: 17, name: 'Roohafza Brew', price: 125, category: 'Cold Brew', emoji: '🌸' },
-  // IDLI
   { id: 18, name: 'Thatte Idli', price: 45, category: 'Idli', emoji: '🍚' },
   { id: 19, name: 'Ghee Thatte Idli', price: 60, category: 'Idli', emoji: '🍚' },
   { id: 20, name: 'Ghee Podi Thatte Idli', price: 70, category: 'Idli', emoji: '🍚' },
   { id: 21, name: 'Idli with Veg Curry', price: 60, category: 'Idli', emoji: '🥘' },
   { id: 22, name: 'Idli with Chicken Curry', price: 100, category: 'Idli', emoji: '🍗' },
-  // MALABAR PARATHA
   { id: 23, name: 'Paneer Chatpata', price: 99, category: 'Malabar Paratha', emoji: '🫓' },
   { id: 24, name: 'Paneer Savji', price: 99, category: 'Malabar Paratha', emoji: '🫓' },
   { id: 25, name: 'Paneer Makkhanwala', price: 99, category: 'Malabar Paratha', emoji: '🫓' },
@@ -81,10 +75,7 @@ async function saveOrderToFirebase(order) {
 }
 
 async function deleteOrderFromFirebase(docId) {
-  try {
-    await deleteDoc(doc(db, "orders", docId));
-    return true;
-  } catch (e) { return false; }
+  try { await deleteDoc(doc(db, "orders", docId)); return true; } catch (e) { return false; }
 }
 
 async function saveCustomer(phone, orderData) {
@@ -114,10 +105,7 @@ async function saveCustomer(phone, orderData) {
 }
 
 async function getCustomer(phone) {
-  try {
-    const snap = await getDoc(doc(db, "customers", phone));
-    return snap.exists() ? snap.data() : null;
-  } catch (e) { return null; }
+  try { const snap = await getDoc(doc(db, "customers", phone)); return snap.exists() ? snap.data() : null; } catch (e) { return null; }
 }
 
 async function getCustomerOrders(phone) {
@@ -145,9 +133,7 @@ function checkSpecialLoyalty(customerData, settings) {
   const [startH, startM] = settings.specialLoyaltyStart.split(':').map(Number);
   const [endH, endM] = settings.specialLoyaltyEnd.split(':').map(Number);
   const currentMin = now.getHours() * 60 + now.getMinutes();
-  const startMin = startH * 60 + startM;
-  const endMin = endH * 60 + endM;
-  if (currentMin < startMin || currentMin > endMin) return { eligible: false };
+  if (currentMin < startH * 60 + startM || currentMin > endH * 60 + endM) return { eligible: false };
   const cutoff = new Date(now.getTime() - settings.specialLoyaltyDays * 86400000);
   const recentVisits = customerData.visitHistory.filter(t => new Date(t) >= cutoff);
   if (recentVisits.length >= settings.specialLoyaltyVisits) {
@@ -172,18 +158,13 @@ function getAIRecommendation(customerOrders, menu) {
   });
   const favorites = Object.entries(itemCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
   const favItem = favorites[0]?.[0] || 'Classic Iced Filter';
-  const pastryUpsell = menu.find(m => m.category === 'Malabar Paratha');
   const totalVisits = customerOrders.length;
   let message = '';
   if (totalVisits === 1) message = `Welcome back! Your usual ${favItem}? 😊`;
-  else if (totalVisits < 5) message = `Hey! Would you like your favorite ${favItem}?`;
-  else if (totalVisits < 10) message = `Great to see you again! ${favItem} as usual? ☕`;
+  else if (totalVisits < 5) message = `Hey! Your favorite ${favItem}?`;
+  else if (totalVisits < 10) message = `Great to see you! ${favItem} as usual? ☕`;
   else message = `Our VIP is here! 🌟 Same great ${favItem}?`;
-  return {
-    message,
-    items: favorites.map(([name, count]) => ({ name, count })),
-    upsell: pastryUpsell ? `💡 Try our ${pastryUpsell.name} (₹${pastryUpsell.price})!` : null,
-  };
+  return { message, items: favorites.map(([name, count]) => ({ name, count })), upsell: null };
 }
 
 function downloadCSV(data, filename) {
@@ -223,9 +204,6 @@ export default function CafePOS() {
   const [editingItem, setEditingItem] = useState(null);
   const [newItem, setNewItem] = useState({ name: '', price: '', category: 'Kaapfi Hot', emoji: '☕' });
   const [promoCodes, setPromoCodes] = useState([]);
-  const [bulkCount, setBulkCount] = useState(20);
-  const [bulkType, setBulkType] = useState('percent');
-  const [bulkValue, setBulkValue] = useState(10);
   const [orderStatuses, setOrderStatuses] = useState({});
   const [lookupPhone, setLookupPhone] = useState('');
   const [lookupCustomer, setLookupCustomer] = useState(null);
@@ -233,25 +211,34 @@ export default function CafePOS() {
   const [lookupAI, setLookupAI] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [allCustomers, setAllCustomers] = useState([]);
-  
-  // NEW: Bill deletion
-  const [deletingOrderId, setDeletingOrderId] = useState(null);
+
+  // NEW: Multi-select states
+  const [selectedBills, setSelectedBills] = useState([]);
+  const [selectedPromos, setSelectedPromos] = useState([]);
+  const [selectedMenuItems, setSelectedMenuItems] = useState([]);
+  const [selectedCloudOrders, setSelectedCloudOrders] = useState([]);
+  const [showDeletePassword, setShowDeletePassword] = useState(null);
   const [deletePassword, setDeletePassword] = useState('');
-  const [deletingPromoId, setDeletingPromoId] = useState(null);
-  
-  // NEW: Force menu reset
-  const [menuVersion, setMenuVersion] = useState(1);
+
+  // NEW: Promo generation flexible
+  const [promoCount, setPromoCount] = useState(1);
+  const [promoType, setPromoType] = useState('percent');
+  const [promoValue, setPromoValue] = useState(10);
+  const [promoActivationDate, setPromoActivationDate] = useState(new Date().toISOString().split('T')[0]);
+  const [promoExpiryDate, setPromoExpiryDate] = useState(new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]);
+  const [promoUsageLimit, setPromoUsageLimit] = useState(1);
+
+  // NEW: CSV export date range
+  const [csvStartDate, setCsvStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [csvEndDate, setCsvEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [csvPhone, setCsvPhone] = useState('');
 
   useEffect(() => {
     const loggedIn = localStorage.getItem('kaapfi_loggedIn');
     if (loggedIn === 'true') setIsLoggedIn(true);
-    
-    // Check menu version - reset if old
     const savedVersion = localStorage.getItem('menuVersion');
     const saved = localStorage.getItem('cafePOS');
-    
     if (savedVersion !== '2' || !saved) {
-      // NEW MENU - force update
       setMenuItems(defaultMenu);
       localStorage.setItem('menuVersion', '2');
       if (saved) {
@@ -265,16 +252,13 @@ export default function CafePOS() {
       setOrders(data.orders || []);
       setOrderStatuses(data.orderStatuses || {});
     }
-    
     const savedSettings = localStorage.getItem('cafeSettings');
     if (savedSettings) setSettings({ ...defaultSettings, ...JSON.parse(savedSettings) });
     const savedPromos = localStorage.getItem('promoCodes');
     if (savedPromos) setPromoCodes(JSON.parse(savedPromos));
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('cafePOS', JSON.stringify({ menuItems, orders, orderStatuses }));
-  }, [menuItems, orders, orderStatuses]);
+  useEffect(() => { localStorage.setItem('cafePOS', JSON.stringify({ menuItems, orders, orderStatuses })); }, [menuItems, orders, orderStatuses]);
   useEffect(() => { localStorage.setItem('cafeSettings', JSON.stringify(settings)); }, [settings]);
   useEffect(() => { localStorage.setItem('promoCodes', JSON.stringify(promoCodes)); }, [promoCodes]);
 
@@ -286,16 +270,12 @@ export default function CafePOS() {
     } else { setLoginError('❌ Wrong password!'); }
   };
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    localStorage.removeItem('kaapfi_loggedIn');
-    setCurrentOrder([]);
-  };
+  const handleLogout = () => { setIsLoggedIn(false); localStorage.removeItem('kaapfi_loggedIn'); setCurrentOrder([]); };
 
   const resetMenuToDefault = () => {
-    if (window.confirm('Reset menu to Kaapfi default menu? This will replace all current menu items.')) {
+    if (window.confirm('Reset menu to Kaapfi default?')) {
       setMenuItems(defaultMenu);
-      alert('✅ Menu reset to Kaapfi 90\'s default!');
+      alert('✅ Menu reset!');
     }
   };
 
@@ -316,10 +296,7 @@ export default function CafePOS() {
     if (activeTab === 'customers' && isLoggedIn) loadAllCustomers();
   }, [activeTab, isLoggedIn]);
 
-  const loadAllCustomers = async () => {
-    const customers = await getAllCustomers();
-    setAllCustomers(customers);
-  };
+  const loadAllCustomers = async () => { const customers = await getAllCustomers(); setAllCustomers(customers); };
 
   const performLookup = async () => {
     if (lookupPhone.length < 10) { alert('Enter 10-digit phone'); return; }
@@ -372,10 +349,11 @@ export default function CafePOS() {
   const applyPromo = () => {
     const p = promoCodes.find(pc => pc.code === promoCode.toUpperCase());
     if (!p) { alert('❌ Invalid code'); return; }
+    if (p.activationDate && new Date(p.activationDate) > new Date()) { alert(`❌ Activates on ${new Date(p.activationDate).toLocaleDateString()}`); return; }
     if (new Date(p.expiryDate) < new Date()) { alert('❌ Expired'); return; }
     if (p.usedCount >= p.usageLimit) { alert('❌ Usage limit reached'); return; }
     setAppliedPromo(p);
-    alert(`✅ ${p.discountType === 'flat' ? '₹' : ''}${p.discountValue}${p.discountType === 'percent' ? '%' : ''} off applied`);
+    alert(`✅ Applied!`);
   };
 
   const completeOrder = async () => {
@@ -393,97 +371,153 @@ export default function CafePOS() {
     setOrders([...orders, order]);
     setOrderStatuses({ ...orderStatuses, [order.id]: { status: 'in_progress', startTime: Date.now() } });
     if (customerPhone.length >= 10) await saveCustomer(customerPhone, order);
-    if (appliedPromo) {
-      setPromoCodes(promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p));
-    }
+    if (appliedPromo) setPromoCodes(promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p));
     setCurrentOrder([]); setCustomerName(''); setCustomerPhone(''); setCustomerData(null);
     setCustomerOrders([]); setPaymentMethod('cash'); setManualDiscountValue(0);
     setPromoCode(''); setAppliedPromo(null); setRedeemPoints(0);
-    alert(firebaseDocId ? '✅ Order saved to cloud!' : '⚠️ Saved locally');
+    alert(firebaseDocId ? '✅ Saved to cloud!' : '⚠️ Saved locally');
   };
 
-  // NEW: Delete order with password
-  const deleteOrder = async (order) => {
-    if (deletePassword !== DELETE_PASSWORD) {
-      alert('❌ Wrong password! Access denied.');
-      return;
+  // BULK DELETE FUNCTIONS
+  const bulkDeleteBills = async () => {
+    if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
+    if (selectedBills.length === 0) { alert('Select bills first'); return; }
+    for (const id of selectedBills) {
+      const order = orders.find(o => o.id === id);
+      if (order?.firebaseDocId) await deleteOrderFromFirebase(order.firebaseDocId);
     }
-    if (order.firebaseDocId) await deleteOrderFromFirebase(order.firebaseDocId);
-    setOrders(orders.filter(o => o.id !== order.id));
-    const newStatuses = { ...orderStatuses };
-    delete newStatuses[order.id];
-    setOrderStatuses(newStatuses);
-    setDeletingOrderId(null);
+    setOrders(orders.filter(o => !selectedBills.includes(o.id)));
+    setSelectedBills([]);
+    setShowDeletePassword(null);
     setDeletePassword('');
-    alert('✅ Bill deleted successfully!');
+    alert(`✅ ${selectedBills.length} bills deleted!`);
   };
 
-  // NEW: Delete promo with password
-  const deletePromo = (promoIndex) => {
-    if (deletePassword !== DELETE_PASSWORD) {
-      alert('❌ Wrong password! Access denied.');
-      return;
-    }
-    setPromoCodes(promoCodes.filter((_, i) => i !== promoIndex));
-    setDeletingPromoId(null);
+  const bulkDeletePromos = () => {
+    if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
+    if (selectedPromos.length === 0) { alert('Select codes first'); return; }
+    setPromoCodes(promoCodes.filter((_, i) => !selectedPromos.includes(i)));
+    setSelectedPromos([]);
+    setShowDeletePassword(null);
     setDeletePassword('');
-    alert('✅ Promo code deleted!');
+    alert(`✅ ${selectedPromos.length} codes deleted!`);
+  };
+
+  const bulkDeleteMenu = () => {
+    if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
+    if (selectedMenuItems.length === 0) { alert('Select items first'); return; }
+    setMenuItems(menuItems.filter(m => !selectedMenuItems.includes(m.id)));
+    setSelectedMenuItems([]);
+    setShowDeletePassword(null);
+    setDeletePassword('');
+    alert(`✅ ${selectedMenuItems.length} items deleted!`);
+  };
+
+  const bulkDeleteCloud = async () => {
+    if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
+    if (selectedCloudOrders.length === 0) { alert('Select orders first'); return; }
+    for (const id of selectedCloudOrders) await deleteOrderFromFirebase(id);
+    setFirebaseOrders(firebaseOrders.filter(o => !selectedCloudOrders.includes(o.id)));
+    setSelectedCloudOrders([]);
+    setShowDeletePassword(null);
+    setDeletePassword('');
+    alert(`✅ ${selectedCloudOrders.length} cloud orders deleted!`);
+  };
+
+  // SELECTION TOGGLES
+  const toggleBill = (id) => setSelectedBills(selectedBills.includes(id) ? selectedBills.filter(x => x !== id) : [...selectedBills, id]);
+  const togglePromo = (i) => setSelectedPromos(selectedPromos.includes(i) ? selectedPromos.filter(x => x !== i) : [...selectedPromos, i]);
+  const toggleMenuItem = (id) => setSelectedMenuItems(selectedMenuItems.includes(id) ? selectedMenuItems.filter(x => x !== id) : [...selectedMenuItems, id]);
+  const toggleCloudOrder = (id) => setSelectedCloudOrders(selectedCloudOrders.includes(id) ? selectedCloudOrders.filter(x => x !== id) : [...selectedCloudOrders, id]);
+
+  const selectAllBills = () => setSelectedBills(selectedBills.length === todayOrders.length ? [] : todayOrders.map(o => o.id));
+  const selectAllPromos = () => setSelectedPromos(selectedPromos.length === promoCodes.length ? [] : promoCodes.map((_, i) => i));
+  const selectAllMenu = () => setSelectedMenuItems(selectedMenuItems.length === menuItems.length ? [] : menuItems.map(m => m.id));
+  const selectAllCloud = () => setSelectedCloudOrders(selectedCloudOrders.length === firebaseOrders.length ? [] : firebaseOrders.map(o => o.id));
+
+  // DOWNLOAD CSV FOR SELECTED
+  const downloadSelectedBills = () => {
+    const selected = todayOrders.filter(o => selectedBills.includes(o.id));
+    if (selected.length === 0) { alert('Select bills first'); return; }
+    downloadCSV(selected, `kaapfi-selected-${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const downloadByDateRange = () => {
+    const start = new Date(csvStartDate);
+    const end = new Date(csvEndDate);
+    end.setHours(23, 59, 59);
+    const filtered = orders.filter(o => {
+      const d = new Date(o.timestamp || o.date);
+      return d >= start && d <= end;
+    });
+    if (filtered.length === 0) { alert('No orders in range'); return; }
+    downloadCSV(filtered, `kaapfi-${csvStartDate}-to-${csvEndDate}.csv`);
+  };
+
+  const downloadByPhone = async () => {
+    if (csvPhone.length < 10) { alert('Enter 10-digit phone'); return; }
+    const customerOrdersList = await getCustomerOrders(csvPhone);
+    if (customerOrdersList.length === 0) { alert('No orders for this phone'); return; }
+    downloadCSV(customerOrdersList, `kaapfi-customer-${csvPhone}.csv`);
+  };
+
+  const downloadSingleBill = (order) => {
+    downloadCSV([order], `kaapfi-bill-${order.id}.csv`);
+  };
+
+  const downloadTodayAll = () => {
+    if (todayOrders.length === 0) { alert('No orders today'); return; }
+    downloadCSV(todayOrders, `kaapfi-today-${new Date().toISOString().split('T')[0]}.csv`);
   };
 
   const printBill = () => {
     if (currentOrder.length === 0) { alert('No items'); return; }
     const w = settings.receiptSize === '58mm' ? 200 : 300;
-    const bill = `\n${settings.cafeName}\n${settings.tagline}\n${settings.phone}\n─────────────────\nDate: ${new Date().toLocaleDateString()}\nTime: ${new Date().toLocaleTimeString()}\nCustomer: ${customerName || 'Walk-in'}\n${customerPhone ? 'Phone: ' + customerPhone + '\n' : ''}─────────────────\n${currentOrder.map(i => `${i.name} x${i.quantity}\n  ₹${i.price * i.quantity}`).join('\n')}\n─────────────────\nSubtotal: ₹${subtotal}\n${manualDiscount > 0 ? `Discount: -₹${manualDiscount.toFixed(0)}\n` : ''}${promoDiscount > 0 ? `Promo: -₹${promoDiscount.toFixed(0)}\n` : ''}${loyaltyRedemption > 0 ? `Points: -₹${loyaltyRedemption}\n` : ''}${specialDiscount > 0 ? `Loyal: -₹${specialDiscount.toFixed(0)}\n` : ''}Tax: ₹${tax.toFixed(0)}\n─────────────────\nTOTAL: ₹${total.toFixed(0)}\n─────────────────\nPayment: ${paymentMethod.toUpperCase()}\n─────────────────\n${settings.footerText}`;
+    const bill = `\n${settings.cafeName}\n${settings.tagline}\n${settings.phone}\n─────────────────\nDate: ${new Date().toLocaleDateString()}\nTime: ${new Date().toLocaleTimeString()}\nCustomer: ${customerName || 'Walk-in'}\n${customerPhone ? 'Phone: ' + customerPhone + '\n' : ''}─────────────────\n${currentOrder.map(i => `${i.name} x${i.quantity}\n  ₹${i.price * i.quantity}`).join('\n')}\n─────────────────\nSubtotal: ₹${subtotal}\n${totalDiscount > 0 ? `Discount: -₹${totalDiscount.toFixed(0)}\n` : ''}Tax: ₹${tax.toFixed(0)}\n─────────────────\nTOTAL: ₹${total.toFixed(0)}\n─────────────────\nPayment: ${paymentMethod.toUpperCase()}\n─────────────────\n${settings.footerText}`;
     const win = window.open('', '', `height=600,width=${w + 100}`);
-    win.document.write(`<pre style="font-family: monospace; font-size: ${settings.receiptSize === '58mm' ? '10px' : '12px'}; width: ${w}px; padding: 10px;">${bill}</pre>`);
+    win.document.write(`<pre style="font-family: monospace; font-size: ${settings.receiptSize === '58mm' ? '10px' : '12px'}; padding: 10px;">${bill}</pre>`);
     win.print(); win.close();
   };
 
   const sendWhatsApp = () => {
     if (currentOrder.length === 0) { alert('No items'); return; }
-    const text = `*${settings.cafeName}*\n${settings.tagline}\n\n*Order:*\n${currentOrder.map(i => `• ${i.name} x${i.quantity} - ₹${i.price * i.quantity}`).join('\n')}\n\n*Total:* ₹${total.toFixed(0)}\n\n${settings.footerText}`;
-    const url = `https://wa.me/${customerPhone ? '91' + customerPhone : ''}?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
+    const text = `*${settings.cafeName}*\n\n*Order:*\n${currentOrder.map(i => `• ${i.name} x${i.quantity} - ₹${i.price * i.quantity}`).join('\n')}\n\n*Total:* ₹${total.toFixed(0)}`;
+    window.open(`https://wa.me/${customerPhone ? '91' + customerPhone : ''}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   const sharePromoWhatsApp = (promo) => {
-    const text = `🎁 *${settings.cafeName}* - Special Offer! 🎁\n\nUse this promo code on your next visit:\n\n*${promo.code}*\n\n💰 Get ${promo.discountType === 'flat' ? '₹' : ''}${promo.discountValue}${promo.discountType === 'percent' ? '%' : ''} OFF!\n\n⏰ Valid till: ${new Date(promo.expiryDate).toLocaleDateString()}\n\n📍 ${settings.address}\n📞 ${settings.phone}\n\n${settings.tagline}`;
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
+    const text = `🎁 *${settings.cafeName}*\n\nPromo Code: *${promo.code}*\n\n${promo.discountType === 'flat' ? '₹' : ''}${promo.discountValue}${promo.discountType === 'percent' ? '%' : ''} OFF\n\nValid: ${new Date(promo.activationDate).toLocaleDateString()} - ${new Date(promo.expiryDate).toLocaleDateString()}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  const copyPromoCode = (code) => {
-    navigator.clipboard.writeText(code);
-    alert(`✅ Copied: ${code}`);
-  };
+  const copyPromoCode = (code) => { navigator.clipboard.writeText(code); alert(`✅ Copied: ${code}`); };
 
   const addMenuItem = () => {
-    if (!newItem.name || !newItem.price) { alert('Fill name and price'); return; }
+    if (!newItem.name || !newItem.price) { alert('Fill all fields'); return; }
     const id = Math.max(...menuItems.map(m => m.id), 0) + 1;
     setMenuItems([...menuItems, { ...newItem, id, price: parseFloat(newItem.price) }]);
     setNewItem({ name: '', price: '', category: 'Kaapfi Hot', emoji: '☕' });
   };
-  const deleteMenuItem = (id) => { if (window.confirm('Delete?')) setMenuItems(menuItems.filter(m => m.id !== id)); };
   const updateMenuItem = () => { setMenuItems(menuItems.map(m => m.id === editingItem.id ? editingItem : m)); setEditingItem(null); };
 
-  const generateBulkPromos = () => {
+  // FLEXIBLE PROMO GENERATION
+  const generatePromos = () => {
+    if (promoCount < 1) { alert('Generate at least 1 code'); return; }
     const newCodes = [];
-    for (let i = 0; i < bulkCount; i++) {
+    for (let i = 0; i < promoCount; i++) {
       newCodes.push({
-        code: generatePromoCode(), discountType: bulkType, discountValue: parseFloat(bulkValue),
-        expiryDate: new Date(Date.now() + 30 * 86400000).toISOString(),
-        usageLimit: 1, usedCount: 0, createdAt: new Date().toISOString(),
+        code: generatePromoCode(),
+        discountType: promoType,
+        discountValue: parseFloat(promoValue),
+        activationDate: new Date(promoActivationDate).toISOString(),
+        expiryDate: new Date(promoExpiryDate).toISOString(),
+        usageLimit: parseInt(promoUsageLimit),
+        usedCount: 0,
+        createdAt: new Date().toISOString(),
       });
     }
     setPromoCodes([...promoCodes, ...newCodes]);
-    alert(`✅ Generated ${bulkCount} codes!`);
-  };
-
-  const exportCSV = (days) => {
-    const cutoff = new Date(Date.now() - days * 86400000);
-    const filtered = orders.filter(o => new Date(o.timestamp || o.date) >= cutoff);
-    if (filtered.length === 0) { alert('No orders in period'); return; }
-    downloadCSV(filtered, `kaapfi-orders-${days}days.csv`);
+    alert(`✅ Generated ${promoCount} code${promoCount > 1 ? 's' : ''}!`);
   };
 
   const updateOrderStatus = (orderId, status) => {
@@ -500,21 +534,43 @@ export default function CafePOS() {
   if (!isLoggedIn) {
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
-        <div style={{ background: '#fff', padding: '48px 40px', borderRadius: '16px', boxShadow: '0 20px 60px rgba(0,0,0,0.3)', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
+        <div style={{ background: '#fff', padding: '48px 40px', borderRadius: '16px', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
           <div style={{ fontSize: '64px', marginBottom: '16px' }}>☕</div>
           <h1 style={{ margin: '0 0 8px', fontSize: '28px', color: '#1a1a1a', fontWeight: '700' }}>{settings.cafeName}</h1>
           <p style={{ margin: '0 0 32px', fontSize: '14px', color: '#666' }}>{settings.tagline}</p>
-          <input type="password" placeholder="Enter Password" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '14px 16px', fontSize: '16px', border: '2px solid #e0e0e0', borderRadius: '8px', marginBottom: '16px', boxSizing: 'border-box', outline: 'none' }} />
+          <input type="password" placeholder="Enter Password" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '14px', fontSize: '16px', border: '2px solid #e0e0e0', borderRadius: '8px', marginBottom: '16px', boxSizing: 'border-box' }} />
           {loginError && <div style={{ color: '#E64A19', fontSize: '14px', marginBottom: '16px' }}>{loginError}</div>}
           <button onClick={handleLogin} style={{ width: '100%', padding: '14px', fontSize: '16px', fontWeight: '600', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>LOGIN →</button>
-          <p style={{ marginTop: '24px', fontSize: '12px', color: '#999' }}>🔒 Kaapfi POS v3.2</p>
+          <p style={{ marginTop: '24px', fontSize: '12px', color: '#999' }}>🔒 Kaapfi POS v3.3</p>
         </div>
       </div>
     );
   }
 
+  // DELETE PASSWORD MODAL
+  const DeleteModal = () => showDeletePassword && (
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', minWidth: '320px' }}>
+        <h3 style={{ margin: '0 0 12px', color: '#E64A19' }}>🔒 Password Required</h3>
+        <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>Enter delete password to continue:</p>
+        <input type="password" autoFocus value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} style={{ width: '100%', padding: '10px', border: '2px solid #E64A19', borderRadius: '6px', boxSizing: 'border-box', fontSize: '14px', marginBottom: '12px' }} />
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => { setShowDeletePassword(null); setDeletePassword(''); }} style={{ flex: 1, padding: '10px', background: '#999', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+          <button onClick={() => {
+            if (showDeletePassword === 'bills') bulkDeleteBills();
+            else if (showDeletePassword === 'promos') bulkDeletePromos();
+            else if (showDeletePassword === 'menu') bulkDeleteMenu();
+            else if (showDeletePassword === 'cloud') bulkDeleteCloud();
+          }} style={{ flex: 1, padding: '10px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5', fontFamily: 'system-ui, sans-serif' }}>
+      <DeleteModal />
+      
       <header style={{ background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', padding: '16px 24px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -557,13 +613,13 @@ export default function CafePOS() {
             <div>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 {categories.map(cat => (
-                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', background: selectedCategory === cat ? '#FC8019' : '#fff', color: selectedCategory === cat ? '#fff' : '#666', fontWeight: '600', fontSize: '13px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>{cat}</button>
+                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', background: selectedCategory === cat ? '#FC8019' : '#fff', color: selectedCategory === cat ? '#fff' : '#666', fontWeight: '600', fontSize: '13px', cursor: 'pointer' }}>{cat}</button>
                 ))}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
                 {filteredItems.map(item => (
                   <div key={item.id} onClick={() => addToOrder(item)} style={{ background: '#fff', padding: '16px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', textAlign: 'center' }}>
-                    <div style={{ fontSize: '36px', marginBottom: '8px' }}>{item.emoji || '🍽️'}</div>
+                    <div style={{ fontSize: '36px', marginBottom: '8px' }}>{item.emoji}</div>
                     <div style={{ fontSize: '13px', fontWeight: '600', color: '#1a1a1a', marginBottom: '4px', minHeight: '36px' }}>{item.name}</div>
                     <div style={{ fontSize: '15px', color: '#FC8019', fontWeight: '700' }}>₹{item.price}</div>
                   </div>
@@ -571,20 +627,17 @@ export default function CafePOS() {
               </div>
             </div>
 
-            <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', height: 'fit-content', position: 'sticky', top: '100px', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+            <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', height: 'fit-content', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
               <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: '700', color: '#1a1a1a' }}>🛒 Current Order ({currentOrder.length})</h3>
+              <input type="tel" placeholder="Customer phone" value={customerPhone} onChange={(e) => handlePhoneChange(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '2px solid #FC8019', borderRadius: '8px', marginBottom: '10px', boxSizing: 'border-box' }} />
+              <input type="text" placeholder="Customer name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '1px solid #e0e0e0', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box' }} />
 
-              <input type="tel" placeholder="Customer phone (for loyalty)" value={customerPhone} onChange={(e) => handlePhoneChange(e.target.value)} style={{ width: '100%', padding: '10px 14px', fontSize: '14px', border: '2px solid #FC8019', borderRadius: '8px', marginBottom: '10px', boxSizing: 'border-box', outline: 'none' }} />
-              <input type="text" placeholder="Customer name (optional)" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px 14px', fontSize: '14px', border: '1px solid #e0e0e0', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box', outline: 'none' }} />
-
-              {/* CUSTOMER HISTORY ON BILLING PAGE - Enhanced for staff */}
               {customerData && (
                 <>
                   <div style={{ background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', padding: '12px', borderRadius: '8px', marginBottom: '10px', color: '#fff' }}>
                     <div style={{ fontSize: '14px', fontWeight: '700' }}>👋 {customerData.name || 'Customer'}</div>
-                    <div style={{ fontSize: '11px', opacity: 0.9, marginTop: '2px' }}>📱 {customerData.phone}</div>
+                    <div style={{ fontSize: '11px', opacity: 0.9 }}>📱 {customerData.phone}</div>
                   </div>
-                  
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '10px' }}>
                     <div style={{ background: '#e8f5e9', padding: '8px', borderRadius: '6px', textAlign: 'center' }}>
                       <div style={{ fontSize: '10px', color: '#666' }}>Points</div>
@@ -599,43 +652,15 @@ export default function CafePOS() {
                       <div style={{ fontSize: '14px', fontWeight: '700', color: '#FC8019' }}>₹{customerData.totalSpent}</div>
                     </div>
                   </div>
-
                   {aiRec && (
                     <div style={{ background: 'linear-gradient(135deg, #9C27B0 0%, #673AB7 100%)', padding: '10px', borderRadius: '8px', marginBottom: '10px', color: '#fff' }}>
-                      <div style={{ fontSize: '10px', opacity: 0.9, fontWeight: '700', marginBottom: '4px' }}>🤖 AI SUGGESTION</div>
-                      <div style={{ fontSize: '12px', fontWeight: '600' }}>{aiRec.message}</div>
-                      {aiRec.items.length > 0 && (
-                        <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                          {aiRec.items.slice(0, 3).map((item, i) => (
-                            <span key={i} style={{ background: 'rgba(255,255,255,0.25)', padding: '3px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '600' }}>
-                              {i === 0 ? '⭐' : '📌'} {item.name} ({item.count}x)
-                            </span>
-                          ))}
-                        </div>
-                      )}
+                      <div style={{ fontSize: '10px', fontWeight: '700' }}>🤖 AI SUGGESTION</div>
+                      <div style={{ fontSize: '12px', fontWeight: '600', marginTop: '4px' }}>{aiRec.message}</div>
                     </div>
                   )}
-
                   {specialCheck.eligible && (
                     <div style={{ background: '#4CAF50', color: '#fff', padding: '8px', borderRadius: '6px', marginBottom: '10px', textAlign: 'center', fontWeight: '700', fontSize: '12px' }}>
-                      ⭐ LOYAL CUSTOMER OFFER! {specialCheck.discountValue}% OFF
-                    </div>
-                  )}
-
-                  {customerOrders.length > 0 && (
-                    <div style={{ background: '#f5f5f5', padding: '10px', borderRadius: '8px', marginBottom: '10px' }}>
-                      <div style={{ fontSize: '11px', fontWeight: '700', color: '#333', marginBottom: '6px' }}>📋 Recent Orders:</div>
-                      <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
-                        {customerOrders.slice(0, 5).map(o => (
-                          <div key={o.id} style={{ fontSize: '10px', color: '#666', marginBottom: '4px', padding: '4px', background: '#fff', borderRadius: '4px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span>{o.date}</span>
-                              <span style={{ fontWeight: '700', color: '#FC8019' }}>₹{o.total?.toFixed(0)}</span>
-                            </div>
-                            <div style={{ fontSize: '9px', color: '#999', marginTop: '2px' }}>{(o.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
-                          </div>
-                        ))}
-                      </div>
+                      ⭐ LOYAL OFFER! {specialCheck.discountValue}% OFF
                     </div>
                   )}
                 </>
@@ -650,7 +675,7 @@ export default function CafePOS() {
                 ) : (
                   currentOrder.map(item => (
                     <div key={item.id} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '8px', marginBottom: '6px', border: '1px solid #e0e0e0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                         <span style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a' }}>{item.emoji} {item.name}</span>
                         <button onClick={() => removeFromOrder(item.id)} style={{ background: 'none', border: 'none', color: '#E64A19', cursor: 'pointer', fontSize: '18px', fontWeight: '700' }}>×</button>
                       </div>
@@ -678,47 +703,33 @@ export default function CafePOS() {
                       <input type="number" value={manualDiscountValue} onChange={(e) => setManualDiscountValue(e.target.value)} placeholder="0" style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }} />
                     </div>
                   </div>
-
                   <div style={{ marginBottom: '10px', padding: '10px', background: '#e3f2fd', borderRadius: '8px' }}>
                     <label style={{ fontSize: '11px', fontWeight: '700', color: '#666' }}>🎁 Promo Code</label>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                       <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="KF1234" style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }} />
                       <button onClick={applyPromo} style={{ padding: '6px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' }}>Apply</button>
                     </div>
-                    {appliedPromo && <div style={{ marginTop: '4px', fontSize: '11px', color: '#4CAF50', fontWeight: '700' }}>✓ {appliedPromo.code} applied</div>}
                   </div>
-
                   {customerData && customerData.loyaltyPoints > 0 && (
                     <div style={{ marginBottom: '10px', padding: '10px', background: '#fce4ec', borderRadius: '8px' }}>
                       <label style={{ fontSize: '11px', fontWeight: '700', color: '#666' }}>🏆 Redeem ({customerData.loyaltyPoints} pts)</label>
                       <input type="number" min="0" max={customerData.loyaltyPoints} value={redeemPoints} onChange={(e) => setRedeemPoints(Math.min(parseInt(e.target.value) || 0, customerData.loyaltyPoints))} style={{ width: '100%', padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px', marginTop: '4px', boxSizing: 'border-box' }} />
-                      {redeemPoints > 0 && <div style={{ fontSize: '11px', color: '#E91E63', marginTop: '4px' }}>= ₹{loyaltyRedemption} off</div>}
                     </div>
                   )}
-
                   <div style={{ borderTop: '1px dashed #ddd', paddingTop: '10px', marginBottom: '12px', fontSize: '12px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666' }}><span>Subtotal</span><span>₹{subtotal}</span></div>
-                    {manualDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E64A19' }}><span>Manual Disc.</span><span>-₹{manualDiscount.toFixed(0)}</span></div>}
-                    {promoDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E64A19' }}><span>Promo</span><span>-₹{promoDiscount.toFixed(0)}</span></div>}
-                    {loyaltyRedemption > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E64A19' }}><span>Points</span><span>-₹{loyaltyRedemption}</span></div>}
-                    {specialDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#4CAF50', fontWeight: '700' }}><span>⭐ Loyal Disc.</span><span>-₹{specialDiscount.toFixed(0)}</span></div>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666' }}><span>Tax ({settings.taxRate}%)</span><span>₹{tax.toFixed(0)}</span></div>
+                    {totalDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E64A19' }}><span>Discount</span><span>-₹{totalDiscount.toFixed(0)}</span></div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', marginTop: '6px', color: '#1a1a1a' }}><span>TOTAL</span><span>₹{total.toFixed(0)}</span></div>
                   </div>
-
-                  <div style={{ marginBottom: '10px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
-                      {['cash', 'card', 'upi'].map(m => (
-                        <button key={m} onClick={() => setPaymentMethod(m)} style={{ padding: '8px', border: 'none', borderRadius: '6px', background: paymentMethod === m ? '#FC8019' : '#f0f0f0', color: paymentMethod === m ? '#fff' : '#666', fontWeight: '600', cursor: 'pointer', fontSize: '11px', textTransform: 'uppercase' }}>{m}</button>
-                      ))}
-                    </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginBottom: '10px' }}>
+                    {['cash', 'card', 'upi'].map(m => (
+                      <button key={m} onClick={() => setPaymentMethod(m)} style={{ padding: '8px', border: 'none', borderRadius: '6px', background: paymentMethod === m ? '#FC8019' : '#f0f0f0', color: paymentMethod === m ? '#fff' : '#666', fontWeight: '600', cursor: 'pointer', fontSize: '11px', textTransform: 'uppercase' }}>{m}</button>
+                    ))}
                   </div>
-
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
                     <button onClick={printBill} style={{ padding: '10px', background: '#fff', color: '#FC8019', border: '2px solid #FC8019', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>🖨️ Print</button>
                     <button onClick={sendWhatsApp} style={{ padding: '10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>📱 WhatsApp</button>
                   </div>
-
                   <button onClick={completeOrder} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '15px' }}>✅ Complete • ₹{total.toFixed(0)}</button>
                 </>
               )}
@@ -726,38 +737,54 @@ export default function CafePOS() {
           </div>
         )}
 
-        {/* BILLS TAB - with DELETE button */}
+        {/* BILLS TAB WITH CHECKBOXES */}
         {activeTab === 'bills' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>🧾 Today's Orders</h2>
+
+            {todayOrders.length > 0 && (
+              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedBills.length === todayOrders.length && todayOrders.length > 0} onChange={selectAllBills} style={{ width: '18px', height: '18px' }} />
+                    <span style={{ fontSize: '13px', fontWeight: '600' }}>Select All ({selectedBills.length}/{todayOrders.length})</span>
+                  </label>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <button onClick={downloadTodayAll} style={{ padding: '8px 12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Download All</button>
+                  {selectedBills.length > 0 && (
+                    <>
+                      <button onClick={downloadSelectedBills} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Download Selected ({selectedBills.length})</button>
+                      <button onClick={() => setShowDeletePassword('bills')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ Delete Selected ({selectedBills.length})</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
             {todayOrders.length === 0 ? (
               <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#999' }}><div style={{ fontSize: '64px' }}>📭</div><p>No orders yet</p></div>
             ) : (
               <div style={{ display: 'grid', gap: '12px' }}>
                 {todayOrders.slice().reverse().map(order => (
-                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                      <div>
-                        <div style={{ fontWeight: '700', color: '#1a1a1a' }}>#{order.id.toString().slice(-5)}</div>
-                        <div style={{ fontSize: '12px', color: '#666' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019' }}>₹{order.total?.toFixed(0)}</div>
-                        <div style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase' }}>{order.paymentMethod}</div>
+                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: selectedBills.includes(order.id) ? '2px solid #FC8019' : '2px solid transparent' }}>
+                    <div style={{ display: 'flex', gap: '12px' }}>
+                      <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleBill(order.id)} style={{ width: '20px', height: '20px', cursor: 'pointer', marginTop: '4px' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                          <div>
+                            <div style={{ fontWeight: '700', color: '#1a1a1a' }}>#{order.id.toString().slice(-5)}</div>
+                            <div style={{ fontSize: '12px', color: '#666' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019' }}>₹{order.total?.toFixed(0)}</div>
+                            <div style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase' }}>{order.paymentMethod}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
+                        <button onClick={() => downloadSingleBill(order)} style={{ padding: '6px 12px', background: '#fff', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>📥 Download CSV</button>
                       </div>
                     </div>
-                    <div style={{ fontSize: '12px', color: '#888', marginBottom: '10px' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
-                    
-                    {/* DELETE BUTTON WITH PASSWORD */}
-                    {deletingOrderId === order.id ? (
-                      <div style={{ display: 'flex', gap: '6px', padding: '10px', background: '#ffebee', borderRadius: '6px' }}>
-                        <input type="password" placeholder="Delete password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} style={{ flex: 1, padding: '8px', border: '1px solid #E64A19', borderRadius: '4px', fontSize: '12px' }} />
-                        <button onClick={() => deleteOrder(order)} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>Confirm</button>
-                        <button onClick={() => { setDeletingOrderId(null); setDeletePassword(''); }} style={{ padding: '8px 12px', background: '#999', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>Cancel</button>
-                      </div>
-                    ) : (
-                      <button onClick={() => setDeletingOrderId(order.id)} style={{ padding: '6px 12px', background: '#fff', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '600' }}>🗑️ Delete Bill</button>
-                    )}
                   </div>
                 ))}
               </div>
@@ -767,14 +794,14 @@ export default function CafePOS() {
 
         {activeTab === 'kitchen' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>👨‍🍳 Kitchen Display</h2>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>👨‍🍳 Kitchen</h2>
             <div style={{ display: 'grid', gap: '12px' }}>
               {todayOrders.filter(o => (orderStatuses[o.id]?.status || 'in_progress') !== 'delivered').map(order => {
                 const status = orderStatuses[order.id] || { status: 'in_progress', startTime: order.startTime || Date.now() };
                 const elapsed = Math.floor((Date.now() - (status.startTime || Date.now())) / 60000);
                 const isLate = elapsed > 10;
                 return (
-                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: isLate ? '2px solid #E64A19' : '2px solid transparent', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: isLate ? '2px solid #E64A19' : '2px solid transparent' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                       <div style={{ fontWeight: '700', color: '#1a1a1a' }}>#{order.id.toString().slice(-5)} • {order.customerName}</div>
                       <div style={{ background: isLate ? '#E64A19' : '#4CAF50', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>⏱️ {elapsed} min</div>
@@ -783,61 +810,95 @@ export default function CafePOS() {
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button onClick={() => updateOrderStatus(order.id, 'in_progress')} style={{ padding: '8px 12px', background: status.status === 'in_progress' ? '#FF9800' : '#f0f0f0', color: status.status === 'in_progress' ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔥 Progress</button>
                       <button onClick={() => updateOrderStatus(order.id, 'ready')} style={{ padding: '8px 12px', background: status.status === 'ready' ? '#4CAF50' : '#f0f0f0', color: status.status === 'ready' ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>✅ Ready</button>
-                      <button onClick={() => updateOrderStatus(order.id, 'delivered')} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📦 Delivered</button>
+                      <button onClick={() => updateOrderStatus(order.id, 'delivered')} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📦 Done</button>
                     </div>
                   </div>
                 );
               })}
-              {todayOrders.filter(o => (orderStatuses[o.id]?.status || 'in_progress') !== 'delivered').length === 0 && (
-                <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#999' }}><div style={{ fontSize: '64px' }}>🎉</div><p>All done!</p></div>
-              )}
             </div>
           </div>
         )}
 
+        {/* REPORTS TAB WITH FLEXIBLE CSV */}
         {activeTab === 'reports' && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              <h2 style={{ fontSize: '24px', margin: 0, color: '#1a1a1a' }}>📊 Reports</h2>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => exportCSV(1)} style={{ padding: '10px 16px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>📥 24h</button>
-                <button onClick={() => exportCSV(7)} style={{ padding: '10px 16px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>📥 7 days</button>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>📊 Reports & Export</h2>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
               {[
                 { label: 'Total Orders', value: todayOrders.length, color: '#FC8019', emoji: '📦' },
                 { label: 'Total Revenue', value: `₹${todayRevenue}`, color: '#4CAF50', emoji: '💰' },
                 { label: 'Avg Order', value: `₹${todayOrders.length > 0 ? (todayRevenue / todayOrders.length).toFixed(0) : 0}`, color: '#2196F3', emoji: '📈' },
                 { label: 'Items Sold', value: todayOrders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.quantity, 0), 0), color: '#9C27B0', emoji: '🛍️' },
               ].map(stat => (
-                <div key={stat.label} style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', borderLeft: `4px solid ${stat.color}` }}>
+                <div key={stat.label} style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: `4px solid ${stat.color}` }}>
                   <div style={{ fontSize: '32px', marginBottom: '8px' }}>{stat.emoji}</div>
                   <div style={{ fontSize: '13px', color: '#666' }}>{stat.label}</div>
                   <div style={{ fontSize: '28px', fontWeight: '700', color: stat.color }}>{stat.value}</div>
                 </div>
               ))}
             </div>
+
+            {/* CSV EXPORT SECTION */}
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>📥 Download CSV by Date Range</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>From Date</label>
+                  <input type="date" value={csvStartDate} onChange={(e) => setCsvStartDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>To Date</label>
+                  <input type="date" value={csvEndDate} onChange={(e) => setCsvEndDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
+                </div>
+                <button onClick={downloadByDateRange} style={{ padding: '10px 20px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>📥 Download</button>
+              </div>
+            </div>
+
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>📱 Download by Phone Number</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px' }}>
+                <input type="tel" placeholder="Enter phone (e.g., 9876543210)" value={csvPhone} onChange={(e) => setCsvPhone(e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }} />
+                <button onClick={downloadByPhone} style={{ padding: '10px 20px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>📥 Download</button>
+              </div>
+            </div>
           </div>
         )}
 
+        {/* CLOUD TAB WITH CHECKBOXES */}
         {activeTab === 'firebase' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ fontSize: '24px', margin: 0, color: '#1a1a1a' }}>☁️ Cloud Orders</h2>
               <button onClick={loadCloudOrders} style={{ padding: '10px 20px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{loadingCloud ? '⏳' : '🔄 Refresh'}</button>
             </div>
-            {loadingCloud ? <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center' }}>⏳ Loading...</div> : firebaseOrders.length === 0 ? (
-              <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#999' }}><div style={{ fontSize: '64px' }}>☁️</div><p>No orders in cloud yet</p></div>
-            ) : (
-              <>
-                <div style={{ background: 'linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)', padding: '20px', borderRadius: '12px', color: '#fff', marginBottom: '16px' }}>
-                  <div style={{ fontSize: '14px', opacity: 0.9 }}>Total Cloud Orders</div>
-                  <div style={{ fontSize: '32px', fontWeight: '700' }}>{firebaseOrders.length}</div>
+
+            {firebaseOrders.length > 0 && (
+              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selectedCloudOrders.length === firebaseOrders.length && firebaseOrders.length > 0} onChange={selectAllCloud} style={{ width: '18px', height: '18px' }} />
+                  <span style={{ fontSize: '13px', fontWeight: '600' }}>Select All ({selectedCloudOrders.length}/{firebaseOrders.length})</span>
+                </label>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button onClick={() => downloadCSV(firebaseOrders, `kaapfi-cloud-all-${new Date().toISOString().split('T')[0]}.csv`)} style={{ padding: '8px 12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Download All</button>
+                  {selectedCloudOrders.length > 0 && (
+                    <>
+                      <button onClick={() => downloadCSV(firebaseOrders.filter(o => selectedCloudOrders.includes(o.id)), `kaapfi-cloud-selected.csv`)} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Selected ({selectedCloudOrders.length})</button>
+                      <button onClick={() => setShowDeletePassword('cloud')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ Delete ({selectedCloudOrders.length})</button>
+                    </>
+                  )}
                 </div>
-                <div style={{ display: 'grid', gap: '12px' }}>
-                  {firebaseOrders.map(order => (
-                    <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+              </div>
+            )}
+
+            {loadingCloud ? <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center' }}>⏳ Loading...</div> : firebaseOrders.length === 0 ? (
+              <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center' }}><div style={{ fontSize: '64px' }}>☁️</div><p>No orders yet</p></div>
+            ) : (
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {firebaseOrders.map(order => (
+                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', display: 'flex', gap: '12px', border: selectedCloudOrders.includes(order.id) ? '2px solid #FC8019' : '2px solid transparent' }}>
+                    <input type="checkbox" checked={selectedCloudOrders.includes(order.id)} onChange={() => toggleCloudOrder(order.id)} style={{ width: '20px', height: '20px', marginTop: '4px' }} />
+                    <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                         <div>
                           <div style={{ fontWeight: '700', color: '#1a1a1a' }}>{order.customerName || 'Walk-in'} {order.customerPhone && `• ${order.customerPhone}`}</div>
@@ -847,20 +908,22 @@ export default function CafePOS() {
                       </div>
                       <div style={{ fontSize: '12px', color: '#888' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
                     </div>
-                  ))}
-                </div>
-              </>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
 
+        {/* MENU TAB WITH CHECKBOXES */}
         {activeTab === 'menu' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
               <h2 style={{ fontSize: '24px', margin: 0, color: '#1a1a1a' }}>🍽️ Menu Management</h2>
               <button onClick={resetMenuToDefault} style={{ padding: '10px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>🔄 Reset to Kaapfi Default</button>
             </div>
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>➕ Add New Item</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
                 <input placeholder="Name" value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }} />
@@ -870,98 +933,137 @@ export default function CafePOS() {
                 <button onClick={addMenuItem} style={{ padding: '10px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Add</button>
               </div>
             </div>
+
+            {menuItems.length > 0 && (
+              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="checkbox" checked={selectedMenuItems.length === menuItems.length} onChange={selectAllMenu} style={{ width: '18px', height: '18px' }} />
+                  <span style={{ fontSize: '13px', fontWeight: '600' }}>Select All ({selectedMenuItems.length}/{menuItems.length})</span>
+                </label>
+                {selectedMenuItems.length > 0 && (
+                  <button onClick={() => setShowDeletePassword('menu')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ Delete Selected ({selectedMenuItems.length})</button>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
               {menuItems.map(item => (
-                <div key={item.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-                  {editingItem && editingItem.id === item.id ? (
-                    <div>
-                      <input value={editingItem.name} onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })} style={{ width: '100%', padding: '8px', marginBottom: '6px', boxSizing: 'border-box' }} />
-                      <input type="number" value={editingItem.price} onChange={(e) => setEditingItem({ ...editingItem, price: parseFloat(e.target.value) })} style={{ width: '100%', padding: '8px', marginBottom: '6px', boxSizing: 'border-box' }} />
-                      <input value={editingItem.category} onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })} style={{ width: '100%', padding: '8px', marginBottom: '6px', boxSizing: 'border-box' }} />
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button onClick={updateMenuItem} style={{ flex: 1, padding: '8px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Save</button>
-                        <button onClick={() => setEditingItem(null)} style={{ flex: 1, padding: '8px', background: '#999', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ fontSize: '32px' }}>{item.emoji}</div>
-                        <div>
-                          <div style={{ fontWeight: '600', color: '#1a1a1a', fontSize: '13px' }}>{item.name}</div>
-                          <div style={{ fontSize: '11px', color: '#666' }}>{item.category} • ₹{item.price}</div>
+                <div key={item.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: selectedMenuItems.includes(item.id) ? '2px solid #FC8019' : '2px solid transparent', display: 'flex', gap: '12px' }}>
+                  <input type="checkbox" checked={selectedMenuItems.includes(item.id)} onChange={() => toggleMenuItem(item.id)} style={{ width: '18px', height: '18px', marginTop: '12px' }} />
+                  <div style={{ flex: 1 }}>
+                    {editingItem && editingItem.id === item.id ? (
+                      <div>
+                        <input value={editingItem.name} onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })} style={{ width: '100%', padding: '8px', marginBottom: '6px', boxSizing: 'border-box' }} />
+                        <input type="number" value={editingItem.price} onChange={(e) => setEditingItem({ ...editingItem, price: parseFloat(e.target.value) })} style={{ width: '100%', padding: '8px', marginBottom: '6px', boxSizing: 'border-box' }} />
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button onClick={updateMenuItem} style={{ flex: 1, padding: '8px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Save</button>
+                          <button onClick={() => setEditingItem(null)} style={{ flex: 1, padding: '8px', background: '#999', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '4px' }}>
+                    ) : (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ fontSize: '28px' }}>{item.emoji}</div>
+                          <div>
+                            <div style={{ fontWeight: '600', color: '#1a1a1a', fontSize: '13px' }}>{item.name}</div>
+                            <div style={{ fontSize: '11px', color: '#666' }}>{item.category} • ₹{item.price}</div>
+                          </div>
+                        </div>
                         <button onClick={() => setEditingItem({ ...item })} style={{ padding: '6px 10px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
-                        <button onClick={() => deleteMenuItem(item.id)} style={{ padding: '6px 10px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Del</button>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* PROMOS - with DELETE */}
+        {/* PROMOS TAB WITH FLEXIBLE GENERATION */}
         {activeTab === 'promos' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>🎁 Promo Codes</h2>
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>Generate Bulk Codes</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px' }}>
-                <select value={bulkCount} onChange={(e) => setBulkCount(parseInt(e.target.value))} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }}>
-                  <option value={20}>20 codes</option><option value={50}>50 codes</option>
-                  <option value={100}>100 codes</option><option value={200}>200 codes</option>
-                </select>
-                <select value={bulkType} onChange={(e) => setBulkType(e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }}>
-                  <option value="percent">% Off</option><option value="flat">₹ Flat</option>
-                </select>
-                <input type="number" value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }} />
-                <button onClick={generateBulkPromos} style={{ padding: '10px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>Generate</button>
+            
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 16px', color: '#1a1a1a' }}>✨ Generate Codes (Min 1)</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>How many codes?</label>
+                  <input type="number" min="1" value={promoCount} onChange={(e) => setPromoCount(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Discount Type</label>
+                  <select value={promoType} onChange={(e) => setPromoType(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}>
+                    <option value="percent">% Off</option>
+                    <option value="flat">₹ Flat Off</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Value</label>
+                  <input type="number" value={promoValue} onChange={(e) => setPromoValue(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Usage Limit</label>
+                  <input type="number" min="1" value={promoUsageLimit} onChange={(e) => setPromoUsageLimit(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
+                </div>
               </div>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>🔓 Activation Date (when code works)</label>
+                  <input type="date" value={promoActivationDate} onChange={(e) => setPromoActivationDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #4CAF50', borderRadius: '6px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>⏰ Valid Till (expiry)</label>
+                  <input type="date" value={promoExpiryDate} onChange={(e) => setPromoExpiryDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #E64A19', borderRadius: '6px', boxSizing: 'border-box' }} />
+                </div>
+              </div>
+              
+              <button onClick={generatePromos} style={{ width: '100%', padding: '14px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
+                🎁 Generate {promoCount} Code{promoCount > 1 ? 's' : ''}
+              </button>
             </div>
 
             {promoCodes.length > 0 && (
-              <div style={{ marginBottom: '12px', color: '#666', fontSize: '13px' }}>
-                Total: {promoCodes.length} codes • Available: {promoCodes.filter(p => (p.usedCount || 0) < p.usageLimit).length}
+              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="checkbox" checked={selectedPromos.length === promoCodes.length} onChange={selectAllPromos} style={{ width: '18px', height: '18px' }} />
+                  <span style={{ fontSize: '13px', fontWeight: '600' }}>Select All ({selectedPromos.length}/{promoCodes.length})</span>
+                </label>
+                {selectedPromos.length > 0 && (
+                  <button onClick={() => setShowDeletePassword('promos')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ Delete Selected ({selectedPromos.length})</button>
+                )}
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
               {promoCodes.slice().reverse().map((p, reverseI) => {
                 const i = promoCodes.length - 1 - reverseI;
                 const isUsed = (p.usedCount || 0) >= p.usageLimit;
+                const notYet = p.activationDate && new Date(p.activationDate) > new Date();
+                const expired = new Date(p.expiryDate) < new Date();
                 return (
-                  <div key={i} style={{ background: isUsed ? '#f5f5f5' : '#fff', padding: '14px', borderRadius: '10px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', opacity: isUsed ? 0.6 : 1, border: isUsed ? '1px solid #ccc' : '2px solid #FC8019' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019', fontFamily: 'monospace' }}>{p.code}</div>
-                      {isUsed && <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>USED</span>}
-                    </div>
-                    <div style={{ fontSize: '13px', color: '#333', fontWeight: '600' }}>{p.discountType === 'flat' ? '₹' : ''}{p.discountValue}{p.discountType === 'percent' ? '%' : ''} off</div>
-                    <div style={{ fontSize: '10px', color: '#999', marginTop: '4px' }}>Expires: {new Date(p.expiryDate).toLocaleDateString()}</div>
-                    <div style={{ fontSize: '10px', color: '#999' }}>Used: {p.usedCount || 0}/{p.usageLimit}</div>
-                    
-                    {deletingPromoId === i ? (
-                      <div style={{ marginTop: '8px', padding: '8px', background: '#ffebee', borderRadius: '4px' }}>
-                        <input type="password" placeholder="Password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} style={{ width: '100%', padding: '6px', border: '1px solid #E64A19', borderRadius: '4px', fontSize: '11px', marginBottom: '4px', boxSizing: 'border-box' }} />
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          <button onClick={() => deletePromo(i)} style={{ flex: 1, padding: '6px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px' }}>Delete</button>
-                          <button onClick={() => { setDeletingPromoId(null); setDeletePassword(''); }} style={{ flex: 1, padding: '6px', background: '#999', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px' }}>Cancel</button>
+                  <div key={i} style={{ background: isUsed || expired ? '#f5f5f5' : '#fff', padding: '14px', borderRadius: '10px', opacity: isUsed || expired ? 0.6 : 1, border: selectedPromos.includes(i) ? '2px solid #FC8019' : '1px solid #e0e0e0', display: 'flex', gap: '10px' }}>
+                    <input type="checkbox" checked={selectedPromos.includes(i)} onChange={() => togglePromo(i)} style={{ width: '18px', height: '18px', marginTop: '4px' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019', fontFamily: 'monospace' }}>{p.code}</div>
+                        {isUsed && <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>USED</span>}
+                        {notYet && <span style={{ fontSize: '10px', background: '#FF9800', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>UPCOMING</span>}
+                        {expired && <span style={{ fontSize: '10px', background: '#999', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>EXPIRED</span>}
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#333', fontWeight: '600' }}>{p.discountType === 'flat' ? '₹' : ''}{p.discountValue}{p.discountType === 'percent' ? '%' : ''} off</div>
+                      <div style={{ fontSize: '10px', color: '#4CAF50', marginTop: '4px' }}>✓ From: {new Date(p.activationDate || p.createdAt).toLocaleDateString()}</div>
+                      <div style={{ fontSize: '10px', color: '#E64A19' }}>⏰ Till: {new Date(p.expiryDate).toLocaleDateString()}</div>
+                      <div style={{ fontSize: '10px', color: '#666' }}>Used: {p.usedCount || 0}/{p.usageLimit}</div>
+                      {!isUsed && !expired && (
+                        <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
+                          <button onClick={() => copyPromoCode(p.code)} style={{ flex: 1, padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '700' }}>📋 Copy</button>
+                          <button onClick={() => sharePromoWhatsApp(p)} style={{ flex: 1, padding: '6px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '700' }}>📱 Share</button>
                         </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
-                        {!isUsed && (
-                          <>
-                            <button onClick={() => copyPromoCode(p.code)} style={{ flex: 1, padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '700' }}>📋</button>
-                            <button onClick={() => sharePromoWhatsApp(p)} style={{ flex: 1, padding: '6px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '700' }}>📱</button>
-                          </>
-                        )}
-                        <button onClick={() => setDeletingPromoId(i)} style={{ flex: 1, padding: '6px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '700' }}>🗑️</button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -972,87 +1074,48 @@ export default function CafePOS() {
         {activeTab === 'customers' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>👥 Customer Lookup</h2>
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>🔍 Search Customer</h3>
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input type="tel" placeholder="Enter 10-digit phone number..." value={lookupPhone} onChange={(e) => setLookupPhone(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && performLookup()} style={{ flex: 1, padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '16px', outline: 'none' }} />
-                <button onClick={performLookup} style={{ padding: '12px 24px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>{lookupLoading ? '⏳' : '🔍 Search'}</button>
+                <input type="tel" placeholder="Enter 10-digit phone..." value={lookupPhone} onChange={(e) => setLookupPhone(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && performLookup()} style={{ flex: 1, padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '16px' }} />
+                <button onClick={performLookup} style={{ padding: '12px 24px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700' }}>{lookupLoading ? '⏳' : '🔍 Search'}</button>
               </div>
             </div>
-
-            {lookupLoading && <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', textAlign: 'center' }}>⏳ Searching...</div>}
-
-            {!lookupLoading && lookupPhone && !lookupCustomer && lookupPhone.length >= 10 && (
-              <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', textAlign: 'center', color: '#999' }}>
-                <div style={{ fontSize: '48px' }}>🤷</div>
-                <p style={{ fontWeight: '600', color: '#666' }}>New customer!</p>
-                <p style={{ fontSize: '13px' }}>No records for {lookupPhone}</p>
-              </div>
-            )}
 
             {lookupCustomer && (
               <>
                 <div style={{ background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', padding: '24px', borderRadius: '12px', color: '#fff', marginBottom: '16px' }}>
                   <div style={{ fontSize: '14px', opacity: 0.9 }}>Customer</div>
                   <div style={{ fontSize: '28px', fontWeight: '700' }}>{lookupCustomer.name || 'Customer'}</div>
-                  <div style={{ fontSize: '13px', marginTop: '4px', opacity: 0.9 }}>📱 {lookupCustomer.phone}</div>
+                  <div style={{ fontSize: '13px', opacity: 0.9 }}>📱 {lookupCustomer.phone}</div>
                 </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '16px' }}>
                   <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', borderLeft: '4px solid #4CAF50' }}>
                     <div style={{ fontSize: '24px' }}>🏆</div>
-                    <div style={{ fontSize: '12px', color: '#666' }}>Loyalty Points</div>
+                    <div style={{ fontSize: '12px', color: '#666' }}>Points</div>
                     <div style={{ fontSize: '24px', fontWeight: '700', color: '#4CAF50' }}>{lookupCustomer.loyaltyPoints || 0}</div>
                   </div>
                   <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', borderLeft: '4px solid #2196F3' }}>
                     <div style={{ fontSize: '24px' }}>📦</div>
-                    <div style={{ fontSize: '12px', color: '#666' }}>Total Orders</div>
+                    <div style={{ fontSize: '12px', color: '#666' }}>Orders</div>
                     <div style={{ fontSize: '24px', fontWeight: '700', color: '#2196F3' }}>{lookupCustomer.totalOrders || 0}</div>
                   </div>
                   <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', borderLeft: '4px solid #FC8019' }}>
                     <div style={{ fontSize: '24px' }}>💰</div>
-                    <div style={{ fontSize: '12px', color: '#666' }}>Total Spent</div>
+                    <div style={{ fontSize: '12px', color: '#666' }}>Spent</div>
                     <div style={{ fontSize: '24px', fontWeight: '700', color: '#FC8019' }}>₹{lookupCustomer.totalSpent || 0}</div>
                   </div>
                 </div>
-
                 {lookupAI && (
                   <div style={{ background: 'linear-gradient(135deg, #9C27B0 0%, #673AB7 100%)', padding: '20px', borderRadius: '12px', color: '#fff', marginBottom: '16px' }}>
-                    <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '8px' }}>🤖 AI RECOMMENDATION</div>
-                    <div style={{ fontSize: '20px', fontWeight: '700', marginBottom: '12px' }}>{lookupAI.message}</div>
-                    {lookupAI.items.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                        {lookupAI.items.map((item, i) => (
-                          <div key={i} style={{ background: 'rgba(255,255,255,0.2)', padding: '6px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: '600' }}>
-                            {i === 0 ? '⭐' : '📌'} {item.name} ({item.count}x)
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <div style={{ fontSize: '14px', opacity: 0.9 }}>🤖 AI RECOMMENDATION</div>
+                    <div style={{ fontSize: '20px', fontWeight: '700', marginTop: '8px' }}>{lookupAI.message}</div>
                   </div>
                 )}
-
-                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
-                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>📋 Order History ({lookupOrders.length})</h3>
-                  {lookupOrders.length === 0 ? <p style={{ color: '#999', textAlign: 'center' }}>No orders yet</p> : (
-                    <div style={{ display: 'grid', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
-                      {lookupOrders.slice(0, 10).map(o => (
-                        <div key={o.id} style={{ padding: '12px', background: '#f9f9f9', borderRadius: '8px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ fontSize: '12px', color: '#666' }}>{o.date} • {o.time}</span>
-                            <span style={{ fontSize: '14px', fontWeight: '700', color: '#FC8019' }}>₹{o.total?.toFixed(0)}</span>
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#333', marginTop: '4px' }}>{(o.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </>
             )}
 
             {!lookupCustomer && allCustomers.length > 0 && (
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginTop: '20px' }}>
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
                 <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>🏆 Top Customers ({allCustomers.length})</h3>
                 <div style={{ display: 'grid', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
                   {allCustomers.slice(0, 20).map(c => (
@@ -1087,12 +1150,8 @@ export default function CafePOS() {
                   <input type="text" value={settings[f.key]} onChange={(e) => setSettings({ ...settings, [f.key]: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '6px', boxSizing: 'border-box' }} />
                 </div>
               ))}
-              <div style={{ marginBottom: '12px' }}>
-                <label style={{ display: 'block', fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '4px' }}>Tax Rate (%)</label>
-                <input type="number" value={settings.taxRate} onChange={(e) => setSettings({ ...settings, taxRate: parseFloat(e.target.value) || 0 })} style={{ width: '100%', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '6px', boxSizing: 'border-box' }} />
-              </div>
               <div style={{ padding: '12px', background: '#fff3e0', borderRadius: '8px', fontSize: '12px', color: '#E64A19', marginTop: '16px' }}>
-                🔒 <strong>Delete Password:</strong> 9923022925 (keep secure)
+                🔒 <strong>Delete Password:</strong> 9923022925
               </div>
             </div>
           </div>
