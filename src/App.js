@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2, Download, RotateCw, Eye, Grid3x3, Move3d, Cloud } from 'lucide-react';
+import { Cloud } from 'lucide-react';
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs, query, where } from "firebase/firestore";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, addDoc, getDocs } from "firebase/firestore";
 
 // ✅ YOUR FIREBASE CONFIG
 const firebaseConfig = {
@@ -45,7 +46,6 @@ export default function CafePOS() {
   const [orders, setOrders] = useState([]);
   const [currentOrder, setCurrentOrder] = useState([]);
   const [activeTab, setActiveTab] = useState('order');
-  const [menuItems, setMenuItems] = useState([]);
   const [showNewItemForm, setShowNewItemForm] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [customerName, setCustomerName] = useState('');
