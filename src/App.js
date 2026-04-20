@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
+import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot, enableIndexedDbPersistence, orderBy } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc",
@@ -14,6 +14,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// Enable offline persistence for better real-time experience
+try {
+  enableIndexedDbPersistence(db).catch(() => {});
+} catch (e) {}
 const CAFE_PASSWORD = "Kaapfi@737";
 const DELETE_PASSWORD = "9923022925";
 
@@ -260,17 +265,29 @@ export default function CafePOS() {
 
     setSyncStatus('syncing');
 
-    // ORDERS - Real-time sync
-    const unsubOrders = onSnapshot(collection(db, "orders"), (snapshot) => {
-      const allOrders = [];
-      snapshot.forEach(doc => allOrders.push({ id: doc.data().id || doc.id, firebaseDocId: doc.id, ...doc.data() }));
-      allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      setOrders(allOrders);
-      setSyncStatus('connected');
-    }, (error) => {
-      console.error('Orders sync error:', error);
-      setSyncStatus('offline');
-    });
+    // ORDERS - Real-time sync with immediate updates
+    const unsubOrders = onSnapshot(
+      collection(db, "orders"), 
+      { includeMetadataChanges: true }, // Listen to local changes too
+      (snapshot) => {
+        const allOrders = [];
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          allOrders.push({ 
+            id: data.id || doc.id, 
+            firebaseDocId: doc.id, 
+            ...data 
+          });
+        });
+        allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        setOrders(allOrders);
+        setSyncStatus(snapshot.metadata.fromCache ? 'syncing' : 'connected');
+      }, 
+      (error) => {
+        console.error('Orders sync error:', error);
+        setSyncStatus('offline');
+      }
+    );
 
     // INVENTORY - Real-time sync with auto-initialization
     const unsubInventory = onSnapshot(doc(db, "appData", "inventory"), (snap) => {
@@ -345,6 +362,38 @@ export default function CafePOS() {
     else { setLoginError('❌ Wrong password!'); }
   };
   const handleLogout = () => { setIsLoggedIn(false); localStorage.removeItem('kaapfi_loggedIn'); setCurrentOrder([]); };
+
+  // Manual refresh - forces fresh data from Firebase
+  const forceRefresh = async () => {
+    setSyncStatus('syncing');
+    try {
+      // Refetch orders
+      const ordersSnap = await getDocs(collection(db, "orders"));
+      const allOrders = [];
+      ordersSnap.forEach(doc => {
+        const data = doc.data();
+        allOrders.push({ id: data.id || doc.id, firebaseDocId: doc.id, ...data });
+      });
+      allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      setOrders(allOrders);
+
+      // Refetch app data
+      const invSnap = await getDoc(doc(db, "appData", "inventory"));
+      if (invSnap.exists()) setInventory(invSnap.data().items || []);
+      
+      const expSnap = await getDoc(doc(db, "appData", "expenses"));
+      if (expSnap.exists()) setExpenses(expSnap.data().items || []);
+      
+      const menuSnap = await getDoc(doc(db, "appData", "menu"));
+      if (menuSnap.exists()) setMenuItems(menuSnap.data().items || defaultMenu);
+
+      setSyncStatus('connected');
+      alert('✅ Data refreshed from cloud!');
+    } catch (e) {
+      setSyncStatus('offline');
+      alert('❌ Refresh failed. Check internet.');
+    }
+  };
 
   const loadAllCustomers = async () => { const customers = await getAllCustomers(); setAllCustomers(customers); };
 
@@ -691,12 +740,12 @@ export default function CafePOS() {
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
         <div style={{ background: '#fff', padding: '48px 40px', borderRadius: '16px', maxWidth: '420px', width: '100%', textAlign: 'center' }}>
           <div style={{ fontSize: '64px', marginBottom: '16px' }}>☕</div>
-          <h1 style={{ margin: '0 0 8px', fontSize: '28px', color: '#1a1a1a', fontWeight: '700' }}>{settings.cafeName}</h1>
-          <p style={{ margin: '0 0 32px', fontSize: '14px', color: '#666' }}>{settings.tagline}</p>
+          <h1 style={{ margin: '0 0 8px', fontSize: '28px', color: '#000', fontWeight: '700' }}>{settings.cafeName}</h1>
+          <p style={{ margin: '0 0 32px', fontSize: '14px', color: '#333' }}>{settings.tagline}</p>
           <input type="password" placeholder="Enter Password" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '14px', fontSize: '16px', border: '2px solid #e0e0e0', borderRadius: '8px', marginBottom: '16px', boxSizing: 'border-box' }} />
           {loginError && <div style={{ color: '#E64A19', fontSize: '14px', marginBottom: '16px' }}>{loginError}</div>}
           <button onClick={handleLogin} style={{ width: '100%', padding: '14px', fontSize: '16px', fontWeight: '600', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>LOGIN →</button>
-          <p style={{ marginTop: '24px', fontSize: '12px', color: '#999' }}>🔒 Kaapfi POS v4.2 • Multi-Device Sync</p>
+          <p style={{ marginTop: '24px', fontSize: '12px', color: '#444' }}>🔒 Kaapfi POS v4.3 • Dark + Live</p>
         </div>
       </div>
     );
@@ -728,11 +777,12 @@ export default function CafePOS() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ background: 'rgba(255,255,255,0.2)', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '13px', fontWeight: '600' }}>🔥 {todayOrders.length} Orders • ₹{todayRevenue}</div>
-            <div style={{ background: syncStatus === 'connected' ? '#4CAF50' : syncStatus === 'syncing' ? '#FF9800' : '#E64A19', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '11px', fontWeight: '600' }}>
-              {syncStatus === 'connected' ? '🔄 SYNCED' : syncStatus === 'syncing' ? '⏳ SYNCING' : '⚠️ OFFLINE'}
+            <div style={{ background: 'rgba(255,255,255,0.25)', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '13px', fontWeight: '700' }}>🔥 {todayOrders.length} Orders • ₹{todayRevenue}</div>
+            <div style={{ background: syncStatus === 'connected' ? '#2E7D32' : syncStatus === 'syncing' ? '#F57C00' : '#C62828', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '11px', fontWeight: '700' }}>
+              {syncStatus === 'connected' ? '🔄 LIVE' : syncStatus === 'syncing' ? '⏳ SYNC' : '⚠️ OFF'}
             </div>
-            <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid #fff', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Logout</button>
+            <button onClick={forceRefresh} style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid #fff', padding: '8px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🔄 Refresh</button>
+            <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid #fff', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>Logout</button>
           </div>
         </div>
       </header>
@@ -775,8 +825,8 @@ export default function CafePOS() {
                   return (
                     <div key={item.id} onClick={() => addToOrder(item)} style={{ background: '#fff', padding: '16px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', textAlign: 'center', border: lowStock ? '2px solid #E64A19' : 'none' }}>
                       <div style={{ fontSize: '36px', marginBottom: '8px' }}>{item.emoji}</div>
-                      <div style={{ fontSize: '13px', fontWeight: '600', color: '#1a1a1a', marginBottom: '4px', minHeight: '36px' }}>{item.name}</div>
-                      <div style={{ fontSize: '15px', color: '#FC8019', fontWeight: '700' }}>₹{item.price}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '600', color: '#000', marginBottom: '4px', minHeight: '36px' }}>{item.name}</div>
+                      <div style={{ fontSize: '15px', color: '#E64A19', fontWeight: '800' }}>₹{item.price}</div>
                       {remaining !== Infinity && (
                         <div style={{ fontSize: '10px', color: lowStock ? '#E64A19' : '#4CAF50', fontWeight: '700', marginTop: '4px' }}>{lowStock ? '⚠️ ' : '✓ '}{remaining} left</div>
                       )}
@@ -787,7 +837,7 @@ export default function CafePOS() {
             </div>
 
             <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', height: 'fit-content', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
-              <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: '700', color: '#1a1a1a' }}>🛒 Current Order ({currentOrder.length})</h3>
+              <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: '700', color: '#000' }}>🛒 Current Order ({currentOrder.length})</h3>
               <input type="tel" placeholder="Customer phone" value={customerPhone} onChange={(e) => handlePhoneChange(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '2px solid #FC8019', borderRadius: '8px', marginBottom: '10px', boxSizing: 'border-box' }} />
               <input type="text" placeholder="Customer name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '1px solid #e0e0e0', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box' }} />
 
@@ -799,15 +849,15 @@ export default function CafePOS() {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '10px' }}>
                     <div style={{ background: '#e8f5e9', padding: '8px', borderRadius: '6px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '10px', color: '#666' }}>Points</div>
+                      <div style={{ fontSize: '10px', color: '#333' }}>Points</div>
                       <div style={{ fontSize: '16px', fontWeight: '700', color: '#4CAF50' }}>{customerData.loyaltyPoints || 0}</div>
                     </div>
                     <div style={{ background: '#e3f2fd', padding: '8px', borderRadius: '6px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '10px', color: '#666' }}>Visits</div>
+                      <div style={{ fontSize: '10px', color: '#333' }}>Visits</div>
                       <div style={{ fontSize: '16px', fontWeight: '700', color: '#2196F3' }}>{customerData.totalOrders}</div>
                     </div>
                     <div style={{ background: '#fff3e0', padding: '8px', borderRadius: '6px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '10px', color: '#666' }}>Spent</div>
+                      <div style={{ fontSize: '10px', color: '#333' }}>Spent</div>
                       <div style={{ fontSize: '14px', fontWeight: '700', color: '#FC8019' }}>₹{customerData.totalSpent}</div>
                     </div>
                   </div>
@@ -822,7 +872,7 @@ export default function CafePOS() {
 
               <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '12px' }}>
                 {currentOrder.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px 20px', color: '#999' }}>
+                  <div style={{ textAlign: 'center', padding: '30px 20px', color: '#444' }}>
                     <div style={{ fontSize: '48px' }}>🛒</div>
                     <p style={{ fontSize: '13px' }}>No items yet</p>
                   </div>
@@ -830,16 +880,16 @@ export default function CafePOS() {
                   currentOrder.map(item => (
                     <div key={item.id} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '8px', marginBottom: '6px', border: '1px solid #e0e0e0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                        <span style={{ fontSize: '13px', fontWeight: '700', color: '#1a1a1a' }}>{item.emoji} {item.name}</span>
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: '#000' }}>{item.emoji} {item.name}</span>
                         <button onClick={() => removeFromOrder(item.id)} style={{ background: 'none', border: 'none', color: '#E64A19', cursor: 'pointer', fontSize: '18px', fontWeight: '700' }}>×</button>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                           <button onClick={() => updateQuantity(item.id, item.quantity - 1)} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #FC8019', background: '#fff', color: '#FC8019', cursor: 'pointer', fontWeight: '700' }}>−</button>
-                          <span style={{ minWidth: '20px', textAlign: 'center', fontWeight: '700', fontSize: '14px', color: '#1a1a1a' }}>{item.quantity}</span>
+                          <span style={{ minWidth: '20px', textAlign: 'center', fontWeight: '700', fontSize: '14px', color: '#000' }}>{item.quantity}</span>
                           <button onClick={() => updateQuantity(item.id, item.quantity + 1)} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #FC8019', background: '#FC8019', color: '#fff', cursor: 'pointer', fontWeight: '700' }}>+</button>
                         </div>
-                        <span style={{ fontWeight: '700', fontSize: '14px', color: '#1a1a1a' }}>₹{item.price * item.quantity}</span>
+                        <span style={{ fontWeight: '700', fontSize: '14px', color: '#000' }}>₹{item.price * item.quantity}</span>
                       </div>
                     </div>
                   ))
@@ -849,7 +899,7 @@ export default function CafePOS() {
               {currentOrder.length > 0 && (
                 <>
                   <div style={{ marginBottom: '10px', padding: '10px', background: '#fff9e6', borderRadius: '8px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#666' }}>💰 Manual Discount</label>
+                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#333' }}>💰 Manual Discount</label>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                       <select value={manualDiscountType} onChange={(e) => setManualDiscountType(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }}>
                         <option value="flat">₹</option><option value="percent">%</option>
@@ -858,16 +908,16 @@ export default function CafePOS() {
                     </div>
                   </div>
                   <div style={{ marginBottom: '10px', padding: '10px', background: '#e3f2fd', borderRadius: '8px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#666' }}>🎁 Promo Code</label>
+                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#333' }}>🎁 Promo Code</label>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                       <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="KF1234" style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }} />
                       <button onClick={applyPromo} style={{ padding: '6px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' }}>Apply</button>
                     </div>
                   </div>
                   <div style={{ borderTop: '1px dashed #ddd', paddingTop: '10px', marginBottom: '12px', fontSize: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666' }}><span>Subtotal</span><span>₹{subtotal}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#333' }}><span>Subtotal</span><span>₹{subtotal}</span></div>
                     {totalDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E64A19' }}><span>Discount</span><span>-₹{totalDiscount.toFixed(0)}</span></div>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', marginTop: '6px', color: '#1a1a1a' }}><span>TOTAL</span><span>₹{total.toFixed(0)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', marginTop: '6px', color: '#000' }}><span>TOTAL</span><span>₹{total.toFixed(0)}</span></div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginBottom: '10px' }}>
                     {['cash', 'card', 'upi'].map(m => (
@@ -891,7 +941,7 @@ export default function CafePOS() {
               🔄 <strong>Real-time sync:</strong> All data syncs across all devices instantly!
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              <h2 style={{ fontSize: '24px', margin: 0, color: '#1a1a1a' }}>💼 Business Summary</h2>
+              <h2 style={{ fontSize: '24px', margin: 0, color: '#000' }}>💼 Business Summary</h2>
               <input type="date" value={summaryDate} onChange={(e) => setSummaryDate(e.target.value)} style={{ padding: '10px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
@@ -918,15 +968,15 @@ export default function CafePOS() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #E64A19' }}>
-                <div style={{ fontSize: '13px', color: '#666' }}>💸 CASH EXPENSES</div>
+                <div style={{ fontSize: '13px', color: '#333' }}>💸 CASH EXPENSES</div>
                 <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>-₹{cashExpenses.toFixed(0)}</div>
               </div>
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #FF9800' }}>
-                <div style={{ fontSize: '13px', color: '#666' }}>💸 UPI EXPENSES</div>
+                <div style={{ fontSize: '13px', color: '#333' }}>💸 UPI EXPENSES</div>
                 <div style={{ fontSize: '24px', fontWeight: '700', color: '#FF9800' }}>-₹{upiExpenses.toFixed(0)}</div>
               </div>
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #E64A19' }}>
-                <div style={{ fontSize: '13px', color: '#666' }}>📉 TOTAL EXPENSES</div>
+                <div style={{ fontSize: '13px', color: '#333' }}>📉 TOTAL EXPENSES</div>
                 <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>-₹{totalExpenses.toFixed(0)}</div>
               </div>
             </div>
@@ -944,12 +994,12 @@ export default function CafePOS() {
             </div>
             {selectedDateExpenses.length > 0 && (
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginTop: '20px' }}>
-                <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>📋 Expenses on {new Date(summaryDate).toLocaleDateString()}</h3>
+                <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000' }}>📋 Expenses on {new Date(summaryDate).toLocaleDateString()}</h3>
                 {selectedDateExpenses.map(e => (
                   <div key={e.id} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
                     <div>
                       <div style={{ fontSize: '13px', fontWeight: '600' }}>{e.description}</div>
-                      <div style={{ fontSize: '11px', color: '#666' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.time}</div>
+                      <div style={{ fontSize: '11px', color: '#333' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.time}</div>
                     </div>
                     <div style={{ fontSize: '16px', fontWeight: '700', color: '#E64A19' }}>-₹{e.amount}</div>
                   </div>
@@ -965,19 +1015,19 @@ export default function CafePOS() {
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>➕ Add Expense</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px', marginBottom: '10px' }}>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Description</label><input placeholder="Milk purchase" value={newExpense.description} onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Amount ₹</label><input type="number" placeholder="500" value={newExpense.amount} onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Category</label><select value={newExpense.category} onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option>General</option><option>Groceries</option><option>Milk/Dairy</option><option>Coffee Beans</option><option>Cleaning</option><option>Utilities</option><option>Staff</option><option>Rent</option><option>Equipment</option><option>Marketing</option><option>Transport</option><option>Other</option></select></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Paid By</label><select value={newExpense.paidBy} onChange={(e) => setNewExpense({ ...newExpense, paidBy: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option value="cash">💵 Cash</option><option value="upi">📱 UPI</option><option value="card">💳 Card</option></select></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>Description</label><input placeholder="Milk purchase" value={newExpense.description} onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>Amount ₹</label><input type="number" placeholder="500" value={newExpense.amount} onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>Category</label><select value={newExpense.category} onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option>General</option><option>Groceries</option><option>Milk/Dairy</option><option>Coffee Beans</option><option>Cleaning</option><option>Utilities</option><option>Staff</option><option>Rent</option><option>Equipment</option><option>Marketing</option><option>Transport</option><option>Other</option></select></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>Paid By</label><select value={newExpense.paidBy} onChange={(e) => setNewExpense({ ...newExpense, paidBy: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option value="cash">💵 Cash</option><option value="upi">📱 UPI</option><option value="card">💳 Card</option></select></div>
               </div>
               <button onClick={addExpense} style={{ width: '100%', padding: '12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>💸 Add Expense</button>
             </div>
             {expenses.length === 0 ? (
-              <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', textAlign: 'center', color: '#999' }}><div style={{ fontSize: '48px' }}>💸</div><p>No expenses yet</p></div>
+              <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', textAlign: 'center', color: '#444' }}><div style={{ fontSize: '48px' }}>💸</div><p>No expenses yet</p></div>
             ) : (
               <div>
                 <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
-                  <div style={{ fontSize: '14px', color: '#666' }}>Total Expenses (All Time)</div>
+                  <div style={{ fontSize: '14px', color: '#333' }}>Total Expenses (All Time)</div>
                   <div style={{ fontSize: '28px', fontWeight: '700', color: '#E64A19' }}>₹{expenses.reduce((s, e) => s + e.amount, 0).toFixed(0)}</div>
                 </div>
                 <div style={{ display: 'grid', gap: '8px' }}>
@@ -985,7 +1035,7 @@ export default function CafePOS() {
                     <div key={e.id} style={{ background: '#fff', padding: '14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontSize: '14px', fontWeight: '700' }}>{e.description}</div>
-                        <div style={{ fontSize: '11px', color: '#666' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.date} • {e.time}</div>
+                        <div style={{ fontSize: '11px', color: '#333' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.date} • {e.time}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{ fontSize: '18px', fontWeight: '700', color: '#E64A19' }}>-₹{e.amount}</div>
@@ -1013,7 +1063,7 @@ export default function CafePOS() {
               <div style={{ background: '#fff3e0', padding: '20px', borderRadius: '12px', marginBottom: '20px', textAlign: 'center' }}>
                 <div style={{ fontSize: '48px' }}>📦</div>
                 <h3 style={{ margin: '8px 0', color: '#E64A19' }}>No inventory items yet!</h3>
-                <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>Click "Quick Add Common Items" above to load default Kaapfi inventory (Coffee, Milk, Paneer, etc.)</p>
+                <p style={{ fontSize: '13px', color: '#333', marginBottom: '12px' }}>Click "Quick Add Common Items" above to load default Kaapfi inventory (Coffee, Milk, Paneer, etc.)</p>
                 <button onClick={quickAddCommonItems} style={{ padding: '12px 24px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>⚡ Load Default Inventory Now</button>
               </div>
             )}
@@ -1021,16 +1071,16 @@ export default function CafePOS() {
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>➕ Add Ingredient</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px', marginBottom: '10px' }}>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Name</label><input placeholder="Cheese" value={newInventoryItem.name} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, name: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Quantity</label><input type="number" placeholder="2000" value={newInventoryItem.quantity} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, quantity: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Unit</label><select value={newInventoryItem.unit} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, unit: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">l</option><option value="units">units</option></select></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Threshold</label><input type="number" placeholder="200" value={newInventoryItem.threshold} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, threshold: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>Name</label><input placeholder="Cheese" value={newInventoryItem.name} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, name: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>Quantity</label><input type="number" placeholder="2000" value={newInventoryItem.quantity} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, quantity: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>Unit</label><select value={newInventoryItem.unit} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, unit: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">l</option><option value="units">units</option></select></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>Threshold</label><input type="number" placeholder="200" value={newInventoryItem.threshold} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, threshold: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
               </div>
               <button onClick={addInventoryItem} style={{ width: '100%', padding: '12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📦 Add</button>
             </div>
             <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}>
-              <div><div style={{ fontSize: '13px', color: '#666' }}>Total Items</div><div style={{ fontSize: '24px', fontWeight: '700' }}>{inventory.length}</div></div>
-              <div><div style={{ fontSize: '13px', color: '#666' }}>Low Stock</div><div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>{inventory.filter(i => i.quantity < i.threshold).length}</div></div>
+              <div><div style={{ fontSize: '13px', color: '#333' }}>Total Items</div><div style={{ fontSize: '24px', fontWeight: '700' }}>{inventory.length}</div></div>
+              <div><div style={{ fontSize: '13px', color: '#333' }}>Low Stock</div><div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>{inventory.filter(i => i.quantity < i.threshold).length}</div></div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
               {inventory.map(item => {
@@ -1055,8 +1105,8 @@ export default function CafePOS() {
                           <div style={{ fontSize: '15px', fontWeight: '700' }}>{item.name}</div>
                           {isLow && <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 8px', borderRadius: '10px' }}>LOW</span>}
                         </div>
-                        <div style={{ fontSize: '28px', fontWeight: '700', color: isLow ? '#E64A19' : '#4CAF50' }}>{item.quantity} <span style={{ fontSize: '14px', color: '#666' }}>{item.unit}</span></div>
-                        <div style={{ fontSize: '11px', color: '#666' }}>Alert below: {item.threshold}{item.unit}</div>
+                        <div style={{ fontSize: '28px', fontWeight: '700', color: isLow ? '#E64A19' : '#4CAF50' }}>{item.quantity} <span style={{ fontSize: '14px', color: '#333' }}>{item.unit}</span></div>
+                        <div style={{ fontSize: '11px', color: '#333' }}>Alert below: {item.threshold}{item.unit}</div>
                         <div style={{ display: 'flex', gap: '4px', marginTop: '10px' }}>
                           <button onClick={() => adjustInventoryQuantity(item.id, -100)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>-100</button>
                           <button onClick={() => adjustInventoryQuantity(item.id, -10)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>-10</button>
@@ -1089,7 +1139,7 @@ export default function CafePOS() {
                       {inventory.map(inv => <option key={inv.id} value={inv.name}>{inv.name} ({inv.unit})</option>)}
                     </select>
                     <input type="number" placeholder="Qty" value={row.quantity} onChange={(e) => updateSOPRow(index, 'quantity', e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }} />
-                    <div style={{ fontSize: '12px', color: '#666' }}>{inventory.find(i => i.name === row.ingredient)?.unit || ''}</div>
+                    <div style={{ fontSize: '12px', color: '#333' }}>{inventory.find(i => i.name === row.ingredient)?.unit || ''}</div>
                     <button onClick={() => removeSOPRow(index)} style={{ padding: '8px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>×</button>
                   </div>
                 ))}
@@ -1109,7 +1159,7 @@ export default function CafePOS() {
                           <span style={{ fontSize: '24px' }}>{item.emoji}</span>
                           <div>
                             <div style={{ fontSize: '14px', fontWeight: '700' }}>{item.name}</div>
-                            <div style={{ fontSize: '11px', color: '#666' }}>₹{item.price}</div>
+                            <div style={{ fontSize: '11px', color: '#333' }}>₹{item.price}</div>
                           </div>
                         </div>
                         {hasSOP ? <span style={{ fontSize: '10px', background: '#4CAF50', color: '#fff', padding: '2px 8px', borderRadius: '10px' }}>✓ SOP</span> : <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 8px', borderRadius: '10px' }}>NO SOP</span>}
@@ -1156,7 +1206,7 @@ export default function CafePOS() {
                                 return <div key={i} style={{ fontSize: '13px', marginBottom: '2px' }}>→ {row.ingredient}: <strong>{row.quantity * item.quantity}{unit}</strong></div>;
                               })}
                             </div>
-                          ) : <div style={{ fontSize: '12px', color: '#999', paddingLeft: '12px' }}>No recipe</div>}
+                          ) : <div style={{ fontSize: '12px', color: '#444', paddingLeft: '12px' }}>No recipe</div>}
                         </div>
                       );
                     })}
@@ -1169,7 +1219,7 @@ export default function CafePOS() {
                 );
               })}
               {todayOrders.filter(o => (o.status || 'in_progress') !== 'delivered').length === 0 && (
-                <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#999' }}><div style={{ fontSize: '64px' }}>🎉</div><p>All done!</p></div>
+                <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#444' }}><div style={{ fontSize: '64px' }}>🎉</div><p>All done!</p></div>
               )}
             </div>
           </div>
@@ -1202,14 +1252,14 @@ export default function CafePOS() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                         <div>
                           <div style={{ fontWeight: '700' }}>#{order.id.toString().slice(-5)}</div>
-                          <div style={{ fontSize: '12px', color: '#666' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
+                          <div style={{ fontSize: '12px', color: '#333' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019' }}>₹{order.total?.toFixed(0)}</div>
-                          <div style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase' }}>{order.paymentMethod}</div>
+                          <div style={{ fontSize: '11px', color: '#333', textTransform: 'uppercase' }}>{order.paymentMethod}</div>
                         </div>
                       </div>
-                      <div style={{ fontSize: '12px', color: '#888', margin: '8px 0' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
+                      <div style={{ fontSize: '12px', color: '#333', margin: '8px 0' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
                       <button onClick={() => downloadSingleBill(order)} style={{ padding: '6px 12px', background: '#fff', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>📥 CSV</button>
                     </div>
                   </div>
@@ -1225,8 +1275,8 @@ export default function CafePOS() {
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>📥 Date Range</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>From</label><input type="date" value={csvStartDate} onChange={(e) => setCsvStartDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>To</label><input type="date" value={csvEndDate} onChange={(e) => setCsvEndDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>From</label><input type="date" value={csvStartDate} onChange={(e) => setCsvStartDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#333' }}>To</label><input type="date" value={csvEndDate} onChange={(e) => setCsvEndDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
                 <button onClick={downloadByDateRange} style={{ padding: '10px 20px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>📥 Download</button>
               </div>
             </div>
@@ -1285,7 +1335,7 @@ export default function CafePOS() {
                           <div style={{ fontSize: '28px' }}>{item.emoji}</div>
                           <div>
                             <div style={{ fontWeight: '600', fontSize: '13px' }}>{item.name}</div>
-                            <div style={{ fontSize: '11px', color: '#666' }}>{item.category} • ₹{item.price}</div>
+                            <div style={{ fontSize: '11px', color: '#333' }}>{item.category} • ₹{item.price}</div>
                           </div>
                         </div>
                         <button onClick={() => setEditingItem({ ...item })} style={{ padding: '6px 10px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
@@ -1341,7 +1391,7 @@ export default function CafePOS() {
                         {expired && <span style={{ fontSize: '10px', background: '#999', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>EXP</span>}
                       </div>
                       <div style={{ fontSize: '13px', fontWeight: '600' }}>{p.discountType === 'flat' ? '₹' : ''}{p.discountValue}{p.discountType === 'percent' ? '%' : ''} off</div>
-                      <div style={{ fontSize: '10px', color: '#666' }}>{new Date(p.activationDate || p.createdAt).toLocaleDateString()} - {new Date(p.expiryDate).toLocaleDateString()}</div>
+                      <div style={{ fontSize: '10px', color: '#333' }}>{new Date(p.activationDate || p.createdAt).toLocaleDateString()} - {new Date(p.expiryDate).toLocaleDateString()}</div>
                       {!isUsed && !expired && (
                         <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
                           <button onClick={() => copyPromoCode(p.code)} style={{ flex: 1, padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '700' }}>📋</button>
@@ -1384,7 +1434,7 @@ export default function CafePOS() {
                     <div key={c.phone} onClick={() => { setLookupPhone(c.phone); performLookup(); }} style={{ padding: '12px', background: '#f9f9f9', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
                       <div>
                         <div style={{ fontWeight: '700' }}>{c.name || 'Customer'} • {c.phone}</div>
-                        <div style={{ fontSize: '11px', color: '#666' }}>{c.totalOrders} orders • 🏆 {c.loyaltyPoints}</div>
+                        <div style={{ fontSize: '11px', color: '#333' }}>{c.totalOrders} orders • 🏆 {c.loyaltyPoints}</div>
                       </div>
                       <div style={{ fontSize: '16px', fontWeight: '700', color: '#FC8019' }}>₹{c.totalSpent}</div>
                     </div>
@@ -1405,7 +1455,7 @@ export default function CafePOS() {
               <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019' }}>Cafe Info</h3>
               {[{ key: 'cafeName', label: 'Name' }, { key: 'tagline', label: 'Tagline' }, { key: 'phone', label: 'Phone' }, { key: 'address', label: 'Address' }].map(f => (
                 <div key={f.key} style={{ marginBottom: '12px' }}>
-                  <label style={{ fontSize: '13px', color: '#666', fontWeight: '600', display: 'block', marginBottom: '4px' }}>{f.label}</label>
+                  <label style={{ fontSize: '13px', color: '#333', fontWeight: '600', display: 'block', marginBottom: '4px' }}>{f.label}</label>
                   <input type="text" value={settings[f.key]} onChange={(e) => updateSettings({ ...settings, [f.key]: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '6px', boxSizing: 'border-box' }} />
                 </div>
               ))}
@@ -1421,9 +1471,9 @@ export default function CafePOS() {
         )}
       </div>
 
-      <footer style={{ background: '#fff', borderTop: '1px solid #eee', padding: '20px 24px', marginTop: '40px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
+      <footer style={{ background: '#fff', borderTop: '1px solid #eee', padding: '20px 24px', marginTop: '40px', textAlign: 'center', color: '#333', fontSize: '13px' }}>
         <div>{settings.cafeName} • {settings.address}</div>
-        <div style={{ fontSize: '11px', marginTop: '4px' }}>v4.2 • Real-Time Multi-Device Sync ☁️</div>
+        <div style={{ fontSize: '11px', marginTop: '4px' }}>v4.3 • Dark Mode + Live Sync ☁️</div>
       </footer>
     </div>
   );
