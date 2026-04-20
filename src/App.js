@@ -363,6 +363,29 @@ export default function CafePOS() {
   };
   const handleLogout = () => { setIsLoggedIn(false); localStorage.removeItem('kaapfi_loggedIn'); setCurrentOrder([]); };
 
+  // Clear all local cache and force fresh sync from Firebase
+  const clearLocalCache = async () => {
+    if (window.confirm('⚠️ This will:\n\n1. Clear all local browser cache\n2. Re-sync fresh data from Firebase\n3. Ensure both devices show SAME data\n\nContinue?')) {
+      // Clear Firebase IndexedDB cache
+      try {
+        const dbs = await window.indexedDB.databases();
+        for (const dbInfo of dbs) {
+          if (dbInfo.name && dbInfo.name.includes('firestore')) {
+            window.indexedDB.deleteDatabase(dbInfo.name);
+          }
+        }
+      } catch (e) {}
+      
+      // Clear localStorage except login
+      const loginState = localStorage.getItem('kaapfi_loggedIn');
+      localStorage.clear();
+      if (loginState) localStorage.setItem('kaapfi_loggedIn', loginState);
+      
+      alert('✅ Cache cleared! Reloading...');
+      window.location.reload();
+    }
+  };
+
   // Manual refresh - forces fresh data from Firebase
   const forceRefresh = async () => {
     setSyncStatus('syncing');
@@ -481,11 +504,15 @@ export default function CafePOS() {
       else { if (!window.confirm(`⚠️ LOW STOCK:\n\n${msg}\n\nContinue?`)) return; }
     }
     setSyncStatus('syncing');
+    const now = new Date();
     const order = {
       id: Date.now(), items: currentOrder, subtotal, manualDiscount, promoDiscount, loyaltyRedemption, specialDiscount, totalDiscount,
       afterDiscount, tax, total, paymentMethod,
       customerName: customerName || 'Walk-in', customerPhone: customerPhone || '',
-      timestamp: new Date().toLocaleString(), date: new Date().toLocaleDateString(), time: new Date().toLocaleTimeString(),
+      timestamp: now.toISOString(), // ISO format for consistent sync
+      date: now.toISOString().split('T')[0], // YYYY-MM-DD
+      time: now.toLocaleTimeString(),
+      displayDate: now.toLocaleDateString(),
       status: 'in_progress', startTime: Date.now(),
     };
     const firebaseDocId = await saveOrderToFirebase(order);
@@ -687,7 +714,16 @@ export default function CafePOS() {
   // EXPENSES - CLOUD SYNC
   const addExpense = async () => {
     if (!newExpense.description || !newExpense.amount) { alert('Fill fields'); return; }
-    const newExp = { ...newExpense, id: Date.now(), amount: parseFloat(newExpense.amount), date: new Date().toLocaleDateString(), time: new Date().toLocaleTimeString(), timestamp: new Date().toISOString() };
+    const now = new Date();
+    const newExp = { 
+      ...newExpense, 
+      id: Date.now(), 
+      amount: parseFloat(newExpense.amount), 
+      date: now.toISOString().split('T')[0],
+      displayDate: now.toLocaleDateString(),
+      time: now.toLocaleTimeString(), 
+      timestamp: now.toISOString() 
+    };
     await saveExpensesToCloud([...expenses, newExp]);
     setNewExpense({ description: '', amount: '', category: 'General', paidBy: 'cash' });
     alert('✅ Added & synced!');
@@ -719,12 +755,35 @@ export default function CafePOS() {
 
   const categories = ['All', ...new Set(menuItems.map(item => item.category))];
   const filteredItems = selectedCategory === 'All' ? menuItems : menuItems.filter(item => item.category === selectedCategory);
-  const todayOrders = orders.filter(o => o.date === new Date().toLocaleDateString());
+  
+  // Use ISO date for consistent comparison across devices
+  const getISODate = (dateInput) => {
+    if (!dateInput) return '';
+    try {
+      const d = typeof dateInput === 'string' && dateInput.includes('/') 
+        ? new Date(dateInput.split('/').reverse().join('-'))
+        : new Date(dateInput);
+      return d.toISOString().split('T')[0];
+    } catch (e) { return ''; }
+  };
+  
+  const todayISO = new Date().toISOString().split('T')[0];
+  const todayOrders = orders.filter(o => {
+    // Try multiple date sources
+    const orderDateISO = getISODate(o.timestamp) || getISODate(o.date);
+    return orderDateISO === todayISO;
+  });
   const todayRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
   const aiRec = customerOrders.length > 0 ? getAIRecommendation(customerOrders, menuItems) : null;
 
-  const selectedDateOrders = orders.filter(o => o.date === new Date(summaryDate).toLocaleDateString());
-  const selectedDateExpenses = expenses.filter(e => e.date === new Date(summaryDate).toLocaleDateString());
+  const selectedDateOrders = orders.filter(o => {
+    const orderDateISO = getISODate(o.timestamp) || getISODate(o.date);
+    return orderDateISO === summaryDate;
+  });
+  const selectedDateExpenses = expenses.filter(e => {
+    const expDateISO = getISODate(e.timestamp) || getISODate(e.date);
+    return expDateISO === summaryDate;
+  });
   const cashReceived = selectedDateOrders.filter(o => o.paymentMethod === 'cash').reduce((s, o) => s + o.total, 0);
   const upiReceived = selectedDateOrders.filter(o => o.paymentMethod === 'upi').reduce((s, o) => s + o.total, 0);
   const cardReceived = selectedDateOrders.filter(o => o.paymentMethod === 'card').reduce((s, o) => s + o.total, 0);
@@ -782,6 +841,7 @@ export default function CafePOS() {
               {syncStatus === 'connected' ? '🔄 LIVE' : syncStatus === 'syncing' ? '⏳ SYNC' : '⚠️ OFF'}
             </div>
             <button onClick={forceRefresh} style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid #fff', padding: '8px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🔄 Refresh</button>
+            <button onClick={clearLocalCache} style={{ background: '#E64A19', color: '#fff', border: '1px solid #fff', padding: '8px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🧹 Clear Cache</button>
             <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid #fff', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>Logout</button>
           </div>
         </div>
