@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc } from "firebase/firestore";
+import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc",
@@ -68,7 +68,6 @@ const defaultMenu = [
   { id: 30, name: 'Crispy Creamy Chicken', price: 125, category: 'Malabar Paratha', emoji: '🍗' },
 ];
 
-// Sample inventory - user can add more
 const defaultInventory = [
   { id: 1, name: 'Filter Coffee Powder', quantity: 2000, unit: 'g', threshold: 200 },
   { id: 2, name: 'Milk', quantity: 10000, unit: 'ml', threshold: 1000 },
@@ -82,7 +81,6 @@ const defaultInventory = [
   { id: 10, name: 'Onion', quantity: 2000, unit: 'g', threshold: 200 },
 ];
 
-// Sample SOPs - user can edit
 const defaultSOPs = {
   'Milk Filter Coffee': [{ ingredient: 'Filter Coffee Powder', quantity: 15 }, { ingredient: 'Milk', quantity: 100 }],
   'Classic Cold Brew': [{ ingredient: 'Cold Brew Concentrate', quantity: 150 }, { ingredient: 'Ice', quantity: 50 }],
@@ -91,10 +89,38 @@ const defaultSOPs = {
   'Thatte Idli': [{ ingredient: 'Idli Batter', quantity: 150 }],
 };
 
+// FIREBASE HELPERS - ALL DATA SYNCED TO CLOUD
+
+async function saveInventoryToCloud(inventory) {
+  try { await setDoc(doc(db, "appData", "inventory"), { items: inventory, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
+
+async function saveExpensesToCloud(expenses) {
+  try { await setDoc(doc(db, "appData", "expenses"), { items: expenses, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
+
+async function saveMenuToCloud(menu) {
+  try { await setDoc(doc(db, "appData", "menu"), { items: menu, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
+
+async function saveSOPsToCloud(sops) {
+  try { await setDoc(doc(db, "appData", "sops"), { data: sops, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
+
+async function savePromosToCloud(promos) {
+  try { await setDoc(doc(db, "appData", "promos"), { items: promos, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
+
+async function saveSettingsToCloud(settings) {
+  try { await setDoc(doc(db, "appData", "settings"), { data: settings, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
+
 async function saveOrderToFirebase(order) {
   try { const docRef = await addDoc(collection(db, "orders"), { ...order, timestamp: new Date().toISOString() }); return docRef.id; } catch (e) { return null; }
 }
+
 async function deleteOrderFromFirebase(docId) { try { await deleteDoc(doc(db, "orders", docId)); return true; } catch (e) { return false; } }
+
 async function saveCustomer(phone, orderData) {
   try {
     const customerRef = doc(db, "customers", phone);
@@ -109,7 +135,9 @@ async function saveCustomer(phone, orderData) {
     return true;
   } catch (e) { return false; }
 }
+
 async function getCustomer(phone) { try { const snap = await getDoc(doc(db, "customers", phone)); return snap.exists() ? snap.data() : null; } catch (e) { return null; } }
+
 async function getCustomerOrders(phone) {
   try {
     const q = query(collection(db, "orders"), where("customerPhone", "==", phone));
@@ -119,6 +147,7 @@ async function getCustomerOrders(phone) {
     return orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   } catch (e) { return []; }
 }
+
 async function getAllCustomers() {
   try { const snap = await getDocs(collection(db, "customers")); const customers = []; snap.forEach(d => customers.push({ id: d.id, ...d.data() })); return customers.sort((a, b) => (b.totalSpent || 0) - (a.totalSpent || 0)); } catch (e) { return []; }
 }
@@ -177,9 +206,7 @@ export default function CafePOS() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerData, setCustomerData] = useState(null);
   const [customerOrders, setCustomerOrders] = useState([]);
-  const [firebaseOrders, setFirebaseOrders] = useState([]);
   const [settings, setSettings] = useState(defaultSettings);
-  const [loadingCloud, setLoadingCloud] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [manualDiscountType, setManualDiscountType] = useState('flat');
   const [manualDiscountValue, setManualDiscountValue] = useState(0);
@@ -199,7 +226,6 @@ export default function CafePOS() {
   const [selectedBills, setSelectedBills] = useState([]);
   const [selectedPromos, setSelectedPromos] = useState([]);
   const [selectedMenuItems, setSelectedMenuItems] = useState([]);
-  const [selectedCloudOrders, setSelectedCloudOrders] = useState([]);
   const [showDeletePassword, setShowDeletePassword] = useState(null);
   const [deletePassword, setDeletePassword] = useState('');
   const [promoCount, setPromoCount] = useState(1);
@@ -211,88 +237,114 @@ export default function CafePOS() {
   const [csvStartDate, setCsvStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [csvEndDate, setCsvEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [csvPhone, setCsvPhone] = useState('');
-
-  // NEW: Inventory & SOPs
   const [inventory, setInventory] = useState(defaultInventory);
   const [menuSOPs, setMenuSOPs] = useState(defaultSOPs);
   const [newInventoryItem, setNewInventoryItem] = useState({ name: '', quantity: '', unit: 'g', threshold: '' });
-  const [editingSOP, setEditingSOP] = useState(null); // menu item name
-  const [sopEditing, setSopEditing] = useState([]); // array of {ingredient, quantity}
+  const [editingSOP, setEditingSOP] = useState(null);
+  const [sopEditing, setSopEditing] = useState([]);
   const [editingInventoryItem, setEditingInventoryItem] = useState(null);
-
-  // NEW: Expenses
   const [expenses, setExpenses] = useState([]);
   const [newExpense, setNewExpense] = useState({ description: '', amount: '', category: 'General', paidBy: 'cash' });
-  
-  // NEW: Summary date filter
   const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [syncStatus, setSyncStatus] = useState('connected'); // connected, syncing, offline
 
+  // LOGIN CHECK
   useEffect(() => {
     const loggedIn = localStorage.getItem('kaapfi_loggedIn');
     if (loggedIn === 'true') setIsLoggedIn(true);
-    const savedVersion = localStorage.getItem('menuVersion');
-    const saved = localStorage.getItem('cafePOS');
-    if (savedVersion !== '2' || !saved) {
-      setMenuItems(defaultMenu);
-      localStorage.setItem('menuVersion', '2');
-      if (saved) { const data = JSON.parse(saved); setOrders(data.orders || []); setOrderStatuses(data.orderStatuses || {}); }
-    } else {
-      const data = JSON.parse(saved);
-      setMenuItems(data.menuItems || defaultMenu);
-      setOrders(data.orders || []);
-      setOrderStatuses(data.orderStatuses || {});
-    }
-    const savedSettings = localStorage.getItem('cafeSettings');
-    if (savedSettings) setSettings({ ...defaultSettings, ...JSON.parse(savedSettings) });
-    const savedPromos = localStorage.getItem('promoCodes');
-    if (savedPromos) setPromoCodes(JSON.parse(savedPromos));
-    
-    // Load inventory
-    const savedInventory = localStorage.getItem('kaapfi_inventory');
-    if (savedInventory) setInventory(JSON.parse(savedInventory));
-    
-    // Load SOPs
-    const savedSOPs = localStorage.getItem('kaapfi_sops');
-    if (savedSOPs) setMenuSOPs(JSON.parse(savedSOPs));
-    
-    // Load expenses
-    const savedExpenses = localStorage.getItem('kaapfi_expenses');
-    if (savedExpenses) setExpenses(JSON.parse(savedExpenses));
   }, []);
 
-  useEffect(() => { localStorage.setItem('cafePOS', JSON.stringify({ menuItems, orders, orderStatuses })); }, [menuItems, orders, orderStatuses]);
-  useEffect(() => { localStorage.setItem('cafeSettings', JSON.stringify(settings)); }, [settings]);
-  useEffect(() => { localStorage.setItem('promoCodes', JSON.stringify(promoCodes)); }, [promoCodes]);
-  useEffect(() => { localStorage.setItem('kaapfi_inventory', JSON.stringify(inventory)); }, [inventory]);
-  useEffect(() => { localStorage.setItem('kaapfi_sops', JSON.stringify(menuSOPs)); }, [menuSOPs]);
-  useEffect(() => { localStorage.setItem('kaapfi_expenses', JSON.stringify(expenses)); }, [expenses]);
+  // REAL-TIME FIREBASE LISTENERS - SYNC ACROSS ALL DEVICES
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    setSyncStatus('syncing');
+
+    // ORDERS - Real-time sync
+    const unsubOrders = onSnapshot(collection(db, "orders"), (snapshot) => {
+      const allOrders = [];
+      snapshot.forEach(doc => allOrders.push({ id: doc.data().id || doc.id, firebaseDocId: doc.id, ...doc.data() }));
+      allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      setOrders(allOrders);
+      setSyncStatus('connected');
+    }, (error) => {
+      console.error('Orders sync error:', error);
+      setSyncStatus('offline');
+    });
+
+    // INVENTORY - Real-time sync with auto-initialization
+    const unsubInventory = onSnapshot(doc(db, "appData", "inventory"), (snap) => {
+      if (snap.exists()) {
+        const cloudInventory = snap.data().items || [];
+        if (cloudInventory.length === 0) {
+          // Cloud has empty array - push defaults
+          console.log('Inventory empty, loading defaults...');
+          saveInventoryToCloud(defaultInventory);
+        } else {
+          setInventory(cloudInventory);
+        }
+      } else {
+        // First time - no document exists
+        console.log('Creating inventory in cloud...');
+        saveInventoryToCloud(defaultInventory);
+      }
+    });
+
+    // EXPENSES - Real-time sync
+    const unsubExpenses = onSnapshot(doc(db, "appData", "expenses"), (snap) => {
+      if (snap.exists()) setExpenses(snap.data().items || []);
+    });
+
+    // MENU - Real-time sync
+    const unsubMenu = onSnapshot(doc(db, "appData", "menu"), (snap) => {
+      if (snap.exists()) {
+        setMenuItems(snap.data().items || defaultMenu);
+      } else {
+        saveMenuToCloud(defaultMenu);
+      }
+    });
+
+    // SOPs - Real-time sync
+    const unsubSOPs = onSnapshot(doc(db, "appData", "sops"), (snap) => {
+      if (snap.exists()) {
+        setMenuSOPs(snap.data().data || defaultSOPs);
+      } else {
+        saveSOPsToCloud(defaultSOPs);
+      }
+    });
+
+    // PROMOS - Real-time sync
+    const unsubPromos = onSnapshot(doc(db, "appData", "promos"), (snap) => {
+      if (snap.exists()) setPromoCodes(snap.data().items || []);
+    });
+
+    // SETTINGS - Real-time sync
+    const unsubSettings = onSnapshot(doc(db, "appData", "settings"), (snap) => {
+      if (snap.exists()) setSettings({ ...defaultSettings, ...snap.data().data });
+    });
+
+    // Cleanup on unmount
+    return () => {
+      unsubOrders();
+      unsubInventory();
+      unsubExpenses();
+      unsubMenu();
+      unsubSOPs();
+      unsubPromos();
+      unsubSettings();
+    };
+  }, [isLoggedIn]);
+
+  // Load customers when tab opened
+  useEffect(() => {
+    if (activeTab === 'customers' && isLoggedIn) loadAllCustomers();
+  }, [activeTab, isLoggedIn]);
 
   const handleLogin = () => {
     if (loginInput === CAFE_PASSWORD) { setIsLoggedIn(true); localStorage.setItem('kaapfi_loggedIn', 'true'); setLoginError(''); setLoginInput(''); }
     else { setLoginError('❌ Wrong password!'); }
   };
   const handleLogout = () => { setIsLoggedIn(false); localStorage.removeItem('kaapfi_loggedIn'); setCurrentOrder([]); };
-
-  const resetMenuToDefault = () => {
-    if (window.confirm('Reset menu to Kaapfi default?')) { setMenuItems(defaultMenu); alert('✅ Menu reset!'); }
-  };
-
-  const loadCloudOrders = async () => {
-    setLoadingCloud(true);
-    try {
-      const snap = await getDocs(collection(db, "orders"));
-      const all = [];
-      snap.forEach(d => all.push({ id: d.id, ...d.data() }));
-      all.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      setFirebaseOrders(all);
-    } catch (e) {}
-    setLoadingCloud(false);
-  };
-
-  useEffect(() => {
-    if (activeTab === 'firebase' && isLoggedIn) loadCloudOrders();
-    if (activeTab === 'customers' && isLoggedIn) loadAllCustomers();
-  }, [activeTab, isLoggedIn]);
 
   const loadAllCustomers = async () => { const customers = await getAllCustomers(); setAllCustomers(customers); };
 
@@ -316,35 +368,30 @@ export default function CafePOS() {
     } else { setCustomerData(null); setCustomerOrders([]); }
   };
 
-  // SMART INVENTORY DEDUCTION
   const checkStockAvailability = (orderItems) => {
     const requiredStock = {};
     orderItems.forEach(item => {
       const sop = menuSOPs[item.name] || [];
-      sop.forEach(ing => {
-        requiredStock[ing.ingredient] = (requiredStock[ing.ingredient] || 0) + (ing.quantity * item.quantity);
-      });
+      sop.forEach(ing => { requiredStock[ing.ingredient] = (requiredStock[ing.ingredient] || 0) + (ing.quantity * item.quantity); });
     });
     const insufficient = [];
     Object.entries(requiredStock).forEach(([ingName, needed]) => {
       const inv = inventory.find(i => i.name === ingName);
-      if (inv && inv.quantity < needed) { insufficient.push({ ingredient: ingName, needed, available: inv.quantity, unit: inv.unit }); }
+      if (inv && inv.quantity < needed) insufficient.push({ ingredient: ingName, needed, available: inv.quantity, unit: inv.unit });
     });
     return { sufficient: insufficient.length === 0, insufficient, requiredStock };
   };
 
-  const deductInventory = (orderItems) => {
+  const deductInventory = async (orderItems) => {
     const newInventory = [...inventory];
     orderItems.forEach(item => {
       const sop = menuSOPs[item.name] || [];
       sop.forEach(ing => {
         const invIndex = newInventory.findIndex(i => i.name === ing.ingredient);
-        if (invIndex !== -1) {
-          newInventory[invIndex] = { ...newInventory[invIndex], quantity: Math.max(0, newInventory[invIndex].quantity - (ing.quantity * item.quantity)) };
-        }
+        if (invIndex !== -1) newInventory[invIndex] = { ...newInventory[invIndex], quantity: Math.max(0, newInventory[invIndex].quantity - (ing.quantity * item.quantity)) };
       });
     });
-    setInventory(newInventory);
+    await saveInventoryToCloud(newInventory);
   };
 
   const addToOrder = (item) => {
@@ -378,19 +425,13 @@ export default function CafePOS() {
 
   const completeOrder = async () => {
     if (currentOrder.length === 0) { alert('Add items'); return; }
-    
-    // Check stock availability
     const stockCheck = checkStockAvailability(currentOrder);
     if (!stockCheck.sufficient) {
       const msg = stockCheck.insufficient.map(i => `• ${i.ingredient}: need ${i.needed}${i.unit}, have ${i.available}${i.unit}`).join('\n');
-      if (settings.preventNegativeStock) {
-        alert(`❌ INSUFFICIENT STOCK!\n\n${msg}\n\nOrder blocked. Update inventory.`);
-        return;
-      } else {
-        if (!window.confirm(`⚠️ LOW STOCK WARNING:\n\n${msg}\n\nContinue anyway?`)) return;
-      }
+      if (settings.preventNegativeStock) { alert(`❌ INSUFFICIENT STOCK!\n\n${msg}`); return; }
+      else { if (!window.confirm(`⚠️ LOW STOCK:\n\n${msg}\n\nContinue?`)) return; }
     }
-    
+    setSyncStatus('syncing');
     const order = {
       id: Date.now(), items: currentOrder, subtotal, manualDiscount, promoDiscount, loyaltyRedemption, specialDiscount, totalDiscount,
       afterDiscount, tax, total, paymentMethod,
@@ -399,60 +440,51 @@ export default function CafePOS() {
       status: 'in_progress', startTime: Date.now(),
     };
     const firebaseDocId = await saveOrderToFirebase(order);
-    if (firebaseDocId) order.firebaseDocId = firebaseDocId;
-    setOrders([...orders, order]);
-    setOrderStatuses({ ...orderStatuses, [order.id]: { status: 'in_progress', startTime: Date.now() } });
     if (customerPhone.length >= 10) await saveCustomer(customerPhone, order);
-    if (appliedPromo) setPromoCodes(promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p));
-    
-    // AUTO DEDUCT INVENTORY
-    deductInventory(currentOrder);
-    
+    if (appliedPromo) {
+      const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
+      await savePromosToCloud(updatedPromos);
+    }
+    await deductInventory(currentOrder);
     setCurrentOrder([]); setCustomerName(''); setCustomerPhone(''); setCustomerData(null);
     setCustomerOrders([]); setPaymentMethod('cash'); setManualDiscountValue(0);
     setPromoCode(''); setAppliedPromo(null); setRedeemPoints(0);
-    alert(firebaseDocId ? '✅ Saved to cloud! Inventory updated.' : '⚠️ Saved locally. Inventory updated.');
+    setSyncStatus('connected');
+    alert(firebaseDocId ? '✅ Saved & synced to all devices!' : '⚠️ Check internet connection');
   };
 
   const bulkDeleteBills = async () => {
     if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
-    if (selectedBills.length === 0) { alert('Select bills first'); return; }
+    if (selectedBills.length === 0) { alert('Select bills'); return; }
     for (const id of selectedBills) { const order = orders.find(o => o.id === id); if (order?.firebaseDocId) await deleteOrderFromFirebase(order.firebaseDocId); }
-    setOrders(orders.filter(o => !selectedBills.includes(o.id)));
     setSelectedBills([]); setShowDeletePassword(null); setDeletePassword('');
     alert(`✅ ${selectedBills.length} bills deleted!`);
   };
-  const bulkDeletePromos = () => {
+
+  const bulkDeletePromos = async () => {
     if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
-    if (selectedPromos.length === 0) { alert('Select codes first'); return; }
-    setPromoCodes(promoCodes.filter((_, i) => !selectedPromos.includes(i)));
+    if (selectedPromos.length === 0) { alert('Select codes'); return; }
+    const filtered = promoCodes.filter((_, i) => !selectedPromos.includes(i));
+    await savePromosToCloud(filtered);
     setSelectedPromos([]); setShowDeletePassword(null); setDeletePassword('');
     alert(`✅ ${selectedPromos.length} codes deleted!`);
   };
-  const bulkDeleteMenu = () => {
+
+  const bulkDeleteMenu = async () => {
     if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
-    if (selectedMenuItems.length === 0) { alert('Select items first'); return; }
-    setMenuItems(menuItems.filter(m => !selectedMenuItems.includes(m.id)));
+    if (selectedMenuItems.length === 0) { alert('Select items'); return; }
+    const filtered = menuItems.filter(m => !selectedMenuItems.includes(m.id));
+    await saveMenuToCloud(filtered);
     setSelectedMenuItems([]); setShowDeletePassword(null); setDeletePassword('');
     alert(`✅ ${selectedMenuItems.length} items deleted!`);
-  };
-  const bulkDeleteCloud = async () => {
-    if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
-    if (selectedCloudOrders.length === 0) { alert('Select orders first'); return; }
-    for (const id of selectedCloudOrders) await deleteOrderFromFirebase(id);
-    setFirebaseOrders(firebaseOrders.filter(o => !selectedCloudOrders.includes(o.id)));
-    setSelectedCloudOrders([]); setShowDeletePassword(null); setDeletePassword('');
-    alert(`✅ ${selectedCloudOrders.length} cloud orders deleted!`);
   };
 
   const toggleBill = (id) => setSelectedBills(selectedBills.includes(id) ? selectedBills.filter(x => x !== id) : [...selectedBills, id]);
   const togglePromo = (i) => setSelectedPromos(selectedPromos.includes(i) ? selectedPromos.filter(x => x !== i) : [...selectedPromos, i]);
   const toggleMenuItem = (id) => setSelectedMenuItems(selectedMenuItems.includes(id) ? selectedMenuItems.filter(x => x !== id) : [...selectedMenuItems, id]);
-  const toggleCloudOrder = (id) => setSelectedCloudOrders(selectedCloudOrders.includes(id) ? selectedCloudOrders.filter(x => x !== id) : [...selectedCloudOrders, id]);
   const selectAllBills = () => setSelectedBills(selectedBills.length === todayOrders.length ? [] : todayOrders.map(o => o.id));
   const selectAllPromos = () => setSelectedPromos(selectedPromos.length === promoCodes.length ? [] : promoCodes.map((_, i) => i));
   const selectAllMenu = () => setSelectedMenuItems(selectedMenuItems.length === menuItems.length ? [] : menuItems.map(m => m.id));
-  const selectAllCloud = () => setSelectedCloudOrders(selectedCloudOrders.length === firebaseOrders.length ? [] : firebaseOrders.map(o => o.id));
 
   const downloadSelectedBills = () => { const selected = todayOrders.filter(o => selectedBills.includes(o.id)); if (selected.length === 0) { alert('Select bills'); return; } downloadCSV(selected, `kaapfi-selected.csv`); };
   const downloadByDateRange = () => {
@@ -490,64 +522,102 @@ export default function CafePOS() {
   };
   const copyPromoCode = (code) => { navigator.clipboard.writeText(code); alert(`✅ Copied: ${code}`); };
 
-  const addMenuItem = () => {
+  const addMenuItem = async () => {
     if (!newItem.name || !newItem.price) { alert('Fill fields'); return; }
     const id = Math.max(...menuItems.map(m => m.id), 0) + 1;
-    setMenuItems([...menuItems, { ...newItem, id, price: parseFloat(newItem.price) }]);
+    const updated = [...menuItems, { ...newItem, id, price: parseFloat(newItem.price) }];
+    await saveMenuToCloud(updated);
     setNewItem({ name: '', price: '', category: 'Kaapfi Hot', emoji: '☕' });
   };
-  const updateMenuItem = () => { setMenuItems(menuItems.map(m => m.id === editingItem.id ? editingItem : m)); setEditingItem(null); };
+  const updateMenuItem = async () => { 
+    const updated = menuItems.map(m => m.id === editingItem.id ? editingItem : m);
+    await saveMenuToCloud(updated);
+    setEditingItem(null);
+  };
 
-  const generatePromos = () => {
+  const resetMenuToDefault = async () => {
+    if (window.confirm('Reset menu to Kaapfi default?')) { 
+      await saveMenuToCloud(defaultMenu); 
+      alert('✅ Menu reset & synced!'); 
+    }
+  };
+
+  const generatePromos = async () => {
     if (promoCount < 1) { alert('At least 1 code'); return; }
     const newCodes = [];
     for (let i = 0; i < promoCount; i++) {
       newCodes.push({ code: generatePromoCode(), discountType: promoType, discountValue: parseFloat(promoValue), activationDate: new Date(promoActivationDate).toISOString(), expiryDate: new Date(promoExpiryDate).toISOString(), usageLimit: parseInt(promoUsageLimit), usedCount: 0, createdAt: new Date().toISOString() });
     }
-    setPromoCodes([...promoCodes, ...newCodes]);
+    await savePromosToCloud([...promoCodes, ...newCodes]);
     alert(`✅ Generated ${promoCount} code${promoCount > 1 ? 's' : ''}!`);
   };
 
-  const updateOrderStatus = (orderId, status) => {
-    const cur = orderStatuses[orderId] || {};
-    setOrderStatuses({ ...orderStatuses, [orderId]: { ...cur, status, ...(status === 'ready' ? { readyTime: Date.now() } : {}) } });
+  const updateOrderStatus = async (orderId, status) => {
+    const order = orders.find(o => o.id === orderId);
+    if (order?.firebaseDocId) {
+      try {
+        await updateDoc(doc(db, "orders", order.firebaseDocId), { 
+          status, 
+          ...(status === 'ready' ? { readyTime: Date.now() } : {}) 
+        });
+      } catch (e) { console.error('Status update failed:', e); }
+    }
   };
 
-  // INVENTORY FUNCTIONS
-  const addInventoryItem = () => {
-    if (!newInventoryItem.name || !newInventoryItem.quantity) { alert('Fill name & quantity'); return; }
-    const id = Math.max(...inventory.map(i => i.id), 0) + 1;
-    setInventory([...inventory, { ...newInventoryItem, id, quantity: parseFloat(newInventoryItem.quantity), threshold: parseFloat(newInventoryItem.threshold) || 0 }]);
-    setNewInventoryItem({ name: '', quantity: '', unit: 'g', threshold: '' });
-    alert('✅ Ingredient added!');
+  // INVENTORY FUNCTIONS - ALL CLOUD SYNC
+
+
+  const deleteInventoryItem = async (id) => {
+    if (window.confirm('Delete this ingredient?')) {
+      const updated = inventory.filter(i => i.id !== id);
+      await saveInventoryToCloud(updated);
+    }
   };
 
-  const deleteInventoryItem = (id) => {
-    if (window.confirm('Delete this ingredient?')) setInventory(inventory.filter(i => i.id !== id));
-  };
-
-  const updateInventoryItem = () => {
+  const updateInventoryItem = async () => {
     if (!editingInventoryItem) return;
-    setInventory(inventory.map(i => i.id === editingInventoryItem.id ? editingInventoryItem : i));
+    const updated = inventory.map(i => i.id === editingInventoryItem.id ? editingInventoryItem : i);
+    await saveInventoryToCloud(updated);
     setEditingInventoryItem(null);
   };
 
-  const adjustInventoryQuantity = (id, change) => {
-    setInventory(inventory.map(i => i.id === id ? { ...i, quantity: Math.max(0, i.quantity + change) } : i));
+  const adjustInventoryQuantity = async (id, change) => {
+    const updated = inventory.map(i => i.id === id ? { ...i, quantity: Math.max(0, i.quantity + change) } : i);
+    await saveInventoryToCloud(updated);
   };
 
-  // SOP FUNCTIONS
+  const resetInventoryToDefault = async () => {
+    if (window.confirm('⚠️ This will REPLACE all current inventory with default Kaapfi inventory.\n\nAll custom items and quantities will be lost. Continue?')) {
+      await saveInventoryToCloud(defaultInventory);
+      alert('✅ Inventory reset to Kaapfi defaults!\n\nAll 10 ingredients loaded:\n- Filter Coffee Powder 2000g\n- Milk 10000ml\n- Paneer 5000g\n- And 7 more...');
+    }
+  };
+
+  const quickAddCommonItems = async () => {
+    if (window.confirm('Add common Kaapfi ingredients to inventory?\n\nWill add these (if not already there):\n• Filter Coffee Powder\n• Milk\n• Paneer\n• Gravy Base\n• Paratha\n• Cold Brew Concentrate\n• Ice\n• Idli Batter\n• Chicken\n• Onion')) {
+      const existingNames = inventory.map(i => i.name.toLowerCase());
+      const toAdd = defaultInventory.filter(d => !existingNames.includes(d.name.toLowerCase()));
+      if (toAdd.length === 0) { alert('All common items already exist!'); return; }
+      const maxId = Math.max(...inventory.map(i => i.id), 0);
+      const newItems = toAdd.map((item, idx) => ({ ...item, id: maxId + idx + 1 }));
+      await saveInventoryToCloud([...inventory, ...newItems]);
+      alert(`✅ Added ${newItems.length} new items!`);
+    }
+  };
+
+  // SOP FUNCTIONS - ALL CLOUD SYNC
   const openSOPEditor = (itemName) => {
     setEditingSOP(itemName);
     setSopEditing(menuSOPs[itemName] ? [...menuSOPs[itemName]] : []);
   };
 
-  const saveSOP = () => {
+  const saveSOP = async () => {
     const filtered = sopEditing.filter(s => s.ingredient && s.quantity > 0);
-    setMenuSOPs({ ...menuSOPs, [editingSOP]: filtered });
+    const updated = { ...menuSOPs, [editingSOP]: filtered };
+    await saveSOPsToCloud(updated);
     setEditingSOP(null);
     setSopEditing([]);
-    alert('✅ SOP saved!');
+    alert('✅ SOP saved & synced!');
   };
 
   const addSOPRow = () => setSopEditing([...sopEditing, { ingredient: '', quantity: 0 }]);
@@ -558,17 +628,28 @@ export default function CafePOS() {
     setSopEditing(updated);
   };
 
-  // EXPENSES
-  const addExpense = () => {
-    if (!newExpense.description || !newExpense.amount) { alert('Fill description & amount'); return; }
-    setExpenses([...expenses, { ...newExpense, id: Date.now(), amount: parseFloat(newExpense.amount), date: new Date().toLocaleDateString(), time: new Date().toLocaleTimeString(), timestamp: new Date().toISOString() }]);
+  // EXPENSES - CLOUD SYNC
+  const addExpense = async () => {
+    if (!newExpense.description || !newExpense.amount) { alert('Fill fields'); return; }
+    const newExp = { ...newExpense, id: Date.now(), amount: parseFloat(newExpense.amount), date: new Date().toLocaleDateString(), time: new Date().toLocaleTimeString(), timestamp: new Date().toISOString() };
+    await saveExpensesToCloud([...expenses, newExp]);
     setNewExpense({ description: '', amount: '', category: 'General', paidBy: 'cash' });
-    alert('✅ Expense added!');
+    alert('✅ Added & synced!');
   };
 
-  const deleteExpense = (id) => { if (window.confirm('Delete expense?')) setExpenses(expenses.filter(e => e.id !== id)); };
+  const deleteExpense = async (id) => { 
+    if (window.confirm('Delete expense?')) {
+      const updated = expenses.filter(e => e.id !== id);
+      await saveExpensesToCloud(updated);
+    }
+  };
 
-  // CALCULATE REMAINING SERVINGS
+  // SETTINGS - CLOUD SYNC
+  const updateSettings = async (newSettings) => {
+    setSettings(newSettings);
+    await saveSettingsToCloud(newSettings);
+  };
+
   const getRemainingServings = (itemName) => {
     const sop = menuSOPs[itemName] || [];
     if (sop.length === 0) return Infinity;
@@ -586,7 +667,6 @@ export default function CafePOS() {
   const todayRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
   const aiRec = customerOrders.length > 0 ? getAIRecommendation(customerOrders, menuItems) : null;
 
-  // BUSINESS SUMMARY CALCULATIONS
   const selectedDateOrders = orders.filter(o => o.date === new Date(summaryDate).toLocaleDateString());
   const selectedDateExpenses = expenses.filter(e => e.date === new Date(summaryDate).toLocaleDateString());
   const cashReceived = selectedDateOrders.filter(o => o.paymentMethod === 'cash').reduce((s, o) => s + o.total, 0);
@@ -609,7 +689,7 @@ export default function CafePOS() {
           <input type="password" placeholder="Enter Password" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '14px', fontSize: '16px', border: '2px solid #e0e0e0', borderRadius: '8px', marginBottom: '16px', boxSizing: 'border-box' }} />
           {loginError && <div style={{ color: '#E64A19', fontSize: '14px', marginBottom: '16px' }}>{loginError}</div>}
           <button onClick={handleLogin} style={{ width: '100%', padding: '14px', fontSize: '16px', fontWeight: '600', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>LOGIN →</button>
-          <p style={{ marginTop: '24px', fontSize: '12px', color: '#999' }}>🔒 Kaapfi POS v4.0</p>
+          <p style={{ marginTop: '24px', fontSize: '12px', color: '#999' }}>🔒 Kaapfi POS v4.2 • Multi-Device Sync</p>
         </div>
       </div>
     );
@@ -622,7 +702,7 @@ export default function CafePOS() {
         <input type="password" autoFocus value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} style={{ width: '100%', padding: '10px', border: '2px solid #E64A19', borderRadius: '6px', boxSizing: 'border-box', fontSize: '14px', marginBottom: '12px' }} />
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={() => { setShowDeletePassword(null); setDeletePassword(''); }} style={{ flex: 1, padding: '10px', background: '#999', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
-          <button onClick={() => { if (showDeletePassword === 'bills') bulkDeleteBills(); else if (showDeletePassword === 'promos') bulkDeletePromos(); else if (showDeletePassword === 'menu') bulkDeleteMenu(); else if (showDeletePassword === 'cloud') bulkDeleteCloud(); }} style={{ flex: 1, padding: '10px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>Delete</button>
+          <button onClick={() => { if (showDeletePassword === 'bills') bulkDeleteBills(); else if (showDeletePassword === 'promos') bulkDeletePromos(); else if (showDeletePassword === 'menu') bulkDeleteMenu(); }} style={{ flex: 1, padding: '10px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>Delete</button>
         </div>
       </div>
     </div>
@@ -642,7 +722,9 @@ export default function CafePOS() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <div style={{ background: 'rgba(255,255,255,0.2)', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '13px', fontWeight: '600' }}>🔥 {todayOrders.length} Orders • ₹{todayRevenue}</div>
-            <div style={{ background: '#4CAF50', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '11px', fontWeight: '600' }}>● LIVE</div>
+            <div style={{ background: syncStatus === 'connected' ? '#4CAF50' : syncStatus === 'syncing' ? '#FF9800' : '#E64A19', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '11px', fontWeight: '600' }}>
+              {syncStatus === 'connected' ? '🔄 SYNCED' : syncStatus === 'syncing' ? '⏳ SYNCING' : '⚠️ OFFLINE'}
+            </div>
             <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid #fff', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Logout</button>
           </div>
         </div>
@@ -658,7 +740,6 @@ export default function CafePOS() {
           { id: 'inventory', icon: '📦', label: 'Inventory' },
           { id: 'sops', icon: '📋', label: 'SOPs' },
           { id: 'reports', icon: '📊', label: 'Reports' },
-          { id: 'firebase', icon: '☁️', label: 'Cloud' },
           { id: 'menu', icon: '🍽️', label: 'Menu' },
           { id: 'promos', icon: '🎁', label: 'Promos' },
           { id: 'customers', icon: '👥', label: 'Customers' },
@@ -690,9 +771,7 @@ export default function CafePOS() {
                       <div style={{ fontSize: '13px', fontWeight: '600', color: '#1a1a1a', marginBottom: '4px', minHeight: '36px' }}>{item.name}</div>
                       <div style={{ fontSize: '15px', color: '#FC8019', fontWeight: '700' }}>₹{item.price}</div>
                       {remaining !== Infinity && (
-                        <div style={{ fontSize: '10px', color: lowStock ? '#E64A19' : '#4CAF50', fontWeight: '700', marginTop: '4px' }}>
-                          {lowStock ? '⚠️ ' : '✓ '}{remaining} left
-                        </div>
+                        <div style={{ fontSize: '10px', color: lowStock ? '#E64A19' : '#4CAF50', fontWeight: '700', marginTop: '4px' }}>{lowStock ? '⚠️ ' : '✓ '}{remaining} left</div>
                       )}
                     </div>
                   );
@@ -799,75 +878,70 @@ export default function CafePOS() {
           </div>
         )}
 
-        {/* BUSINESS SUMMARY TAB */}
         {activeTab === 'summary' && (
           <div>
+            <div style={{ background: '#e3f2fd', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#0066cc' }}>
+              🔄 <strong>Real-time sync:</strong> All data syncs across all devices instantly!
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
               <h2 style={{ fontSize: '24px', margin: 0, color: '#1a1a1a' }}>💼 Business Summary</h2>
               <input type="date" value={summaryDate} onChange={(e) => setSummaryDate(e.target.value)} style={{ padding: '10px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }} />
             </div>
-
-            {/* Revenue Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
               <div style={{ background: 'linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)', padding: '20px', borderRadius: '12px', color: '#fff' }}>
-                <div style={{ fontSize: '13px', opacity: 0.9 }}>💰 CASH RECEIVED</div>
-                <div style={{ fontSize: '28px', fontWeight: '700', marginTop: '4px' }}>₹{cashReceived.toFixed(0)}</div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>💰 CASH</div>
+                <div style={{ fontSize: '28px', fontWeight: '700' }}>₹{cashReceived.toFixed(0)}</div>
                 <div style={{ fontSize: '11px', opacity: 0.8 }}>{selectedDateOrders.filter(o => o.paymentMethod === 'cash').length} orders</div>
               </div>
               <div style={{ background: 'linear-gradient(135deg, #2196F3 0%, #1976D2 100%)', padding: '20px', borderRadius: '12px', color: '#fff' }}>
-                <div style={{ fontSize: '13px', opacity: 0.9 }}>📱 UPI RECEIVED</div>
-                <div style={{ fontSize: '28px', fontWeight: '700', marginTop: '4px' }}>₹{upiReceived.toFixed(0)}</div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>📱 UPI</div>
+                <div style={{ fontSize: '28px', fontWeight: '700' }}>₹{upiReceived.toFixed(0)}</div>
                 <div style={{ fontSize: '11px', opacity: 0.8 }}>{selectedDateOrders.filter(o => o.paymentMethod === 'upi').length} orders</div>
               </div>
               <div style={{ background: 'linear-gradient(135deg, #9C27B0 0%, #673AB7 100%)', padding: '20px', borderRadius: '12px', color: '#fff' }}>
-                <div style={{ fontSize: '13px', opacity: 0.9 }}>💳 CARD RECEIVED</div>
-                <div style={{ fontSize: '28px', fontWeight: '700', marginTop: '4px' }}>₹{cardReceived.toFixed(0)}</div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>💳 CARD</div>
+                <div style={{ fontSize: '28px', fontWeight: '700' }}>₹{cardReceived.toFixed(0)}</div>
                 <div style={{ fontSize: '11px', opacity: 0.8 }}>{selectedDateOrders.filter(o => o.paymentMethod === 'card').length} orders</div>
               </div>
               <div style={{ background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', padding: '20px', borderRadius: '12px', color: '#fff' }}>
-                <div style={{ fontSize: '13px', opacity: 0.9 }}>🔥 TOTAL REVENUE</div>
-                <div style={{ fontSize: '28px', fontWeight: '700', marginTop: '4px' }}>₹{totalReceived.toFixed(0)}</div>
+                <div style={{ fontSize: '13px', opacity: 0.9 }}>🔥 TOTAL</div>
+                <div style={{ fontSize: '28px', fontWeight: '700' }}>₹{totalReceived.toFixed(0)}</div>
                 <div style={{ fontSize: '11px', opacity: 0.8 }}>{selectedDateOrders.length} orders</div>
               </div>
             </div>
-
-            {/* Expenses */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #E64A19' }}>
                 <div style={{ fontSize: '13px', color: '#666' }}>💸 CASH EXPENSES</div>
-                <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19', marginTop: '4px' }}>-₹{cashExpenses.toFixed(0)}</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>-₹{cashExpenses.toFixed(0)}</div>
               </div>
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #FF9800' }}>
                 <div style={{ fontSize: '13px', color: '#666' }}>💸 UPI EXPENSES</div>
-                <div style={{ fontSize: '24px', fontWeight: '700', color: '#FF9800', marginTop: '4px' }}>-₹{upiExpenses.toFixed(0)}</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: '#FF9800' }}>-₹{upiExpenses.toFixed(0)}</div>
               </div>
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #E64A19' }}>
                 <div style={{ fontSize: '13px', color: '#666' }}>📉 TOTAL EXPENSES</div>
-                <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19', marginTop: '4px' }}>-₹{totalExpenses.toFixed(0)}</div>
+                <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>-₹{totalExpenses.toFixed(0)}</div>
               </div>
             </div>
-
-            {/* Net */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               <div style={{ background: netCashInHand >= 0 ? 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)' : 'linear-gradient(135deg, #E64A19 0%, #B71C1C 100%)', padding: '24px', borderRadius: '12px', color: '#fff' }}>
                 <div style={{ fontSize: '14px', opacity: 0.9 }}>💵 NET CASH IN HAND</div>
-                <div style={{ fontSize: '36px', fontWeight: '700', marginTop: '8px' }}>₹{netCashInHand.toFixed(0)}</div>
-                <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>Cash Received (₹{cashReceived.toFixed(0)}) - Cash Expenses (₹{cashExpenses.toFixed(0)})</div>
+                <div style={{ fontSize: '36px', fontWeight: '700' }}>₹{netCashInHand.toFixed(0)}</div>
+                <div style={{ fontSize: '12px', opacity: 0.8 }}>Cash ₹{cashReceived.toFixed(0)} - Expenses ₹{cashExpenses.toFixed(0)}</div>
               </div>
               <div style={{ background: netProfit >= 0 ? 'linear-gradient(135deg, #2196F3 0%, #0D47A1 100%)' : 'linear-gradient(135deg, #E64A19 0%, #B71C1C 100%)', padding: '24px', borderRadius: '12px', color: '#fff' }}>
-                <div style={{ fontSize: '14px', opacity: 0.9 }}>📊 NET PROFIT (All)</div>
-                <div style={{ fontSize: '36px', fontWeight: '700', marginTop: '8px' }}>₹{netProfit.toFixed(0)}</div>
-                <div style={{ fontSize: '12px', opacity: 0.8, marginTop: '4px' }}>Total Revenue - Total Expenses</div>
+                <div style={{ fontSize: '14px', opacity: 0.9 }}>📊 NET PROFIT</div>
+                <div style={{ fontSize: '36px', fontWeight: '700' }}>₹{netProfit.toFixed(0)}</div>
+                <div style={{ fontSize: '12px', opacity: 0.8 }}>Revenue - Expenses</div>
               </div>
             </div>
-
             {selectedDateExpenses.length > 0 && (
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginTop: '20px' }}>
                 <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>📋 Expenses on {new Date(summaryDate).toLocaleDateString()}</h3>
                 {selectedDateExpenses.map(e => (
                   <div key={e.id} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
                     <div>
-                      <div style={{ fontSize: '13px', fontWeight: '600', color: '#1a1a1a' }}>{e.description}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '600' }}>{e.description}</div>
                       <div style={{ fontSize: '11px', color: '#666' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.time}</div>
                     </div>
                     <div style={{ fontSize: '16px', fontWeight: '700', color: '#E64A19' }}>-₹{e.amount}</div>
@@ -878,47 +952,21 @@ export default function CafePOS() {
           </div>
         )}
 
-        {/* EXPENSES TAB */}
         {activeTab === 'expenses' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>💸 Expenses</h2>
-            
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px' }}>💸 Expenses</h2>
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>➕ Add Expense</h3>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>➕ Add Expense</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px', marginBottom: '10px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Description</label>
-                  <input placeholder="e.g., Milk purchase" value={newExpense.description} onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Amount ₹</label>
-                  <input type="number" placeholder="500" value={newExpense.amount} onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Category</label>
-                  <select value={newExpense.category} onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}>
-                    <option>General</option><option>Groceries</option><option>Milk/Dairy</option><option>Coffee Beans</option>
-                    <option>Cleaning</option><option>Utilities</option><option>Staff</option><option>Rent</option>
-                    <option>Equipment</option><option>Marketing</option><option>Transport</option><option>Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Paid By</label>
-                  <select value={newExpense.paidBy} onChange={(e) => setNewExpense({ ...newExpense, paidBy: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}>
-                    <option value="cash">💵 Cash</option>
-                    <option value="upi">📱 UPI</option>
-                    <option value="card">💳 Card</option>
-                  </select>
-                </div>
+                <div><label style={{ fontSize: '11px', color: '#666' }}>Description</label><input placeholder="Milk purchase" value={newExpense.description} onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#666' }}>Amount ₹</label><input type="number" placeholder="500" value={newExpense.amount} onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#666' }}>Category</label><select value={newExpense.category} onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option>General</option><option>Groceries</option><option>Milk/Dairy</option><option>Coffee Beans</option><option>Cleaning</option><option>Utilities</option><option>Staff</option><option>Rent</option><option>Equipment</option><option>Marketing</option><option>Transport</option><option>Other</option></select></div>
+                <div><label style={{ fontSize: '11px', color: '#666' }}>Paid By</label><select value={newExpense.paidBy} onChange={(e) => setNewExpense({ ...newExpense, paidBy: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option value="cash">💵 Cash</option><option value="upi">📱 UPI</option><option value="card">💳 Card</option></select></div>
               </div>
-              <button onClick={addExpense} style={{ width: '100%', padding: '12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>💸 Add Expense</button>
+              <button onClick={addExpense} style={{ width: '100%', padding: '12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>💸 Add Expense</button>
             </div>
-
             {expenses.length === 0 ? (
-              <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', textAlign: 'center', color: '#999' }}>
-                <div style={{ fontSize: '48px' }}>💸</div>
-                <p>No expenses yet</p>
-              </div>
+              <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', textAlign: 'center', color: '#999' }}><div style={{ fontSize: '48px' }}>💸</div><p>No expenses yet</p></div>
             ) : (
               <div>
                 <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
@@ -929,7 +977,7 @@ export default function CafePOS() {
                   {expenses.slice().reverse().map(e => (
                     <div key={e.id} style={{ background: '#fff', padding: '14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <div style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a' }}>{e.description}</div>
+                        <div style={{ fontSize: '14px', fontWeight: '700' }}>{e.description}</div>
                         <div style={{ fontSize: '11px', color: '#666' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.date} • {e.time}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -944,49 +992,39 @@ export default function CafePOS() {
           </div>
         )}
 
-        {/* INVENTORY TAB */}
         {activeTab === 'inventory' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>📦 Inventory Management</h2>
-            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+              <h2 style={{ fontSize: '24px', margin: 0 }}>📦 Inventory</h2>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button onClick={quickAddCommonItems} style={{ padding: '10px 16px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>⚡ Quick Add Common Items</button>
+                <button onClick={resetInventoryToDefault} style={{ padding: '10px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '13px' }}>🔄 Reset to Kaapfi Default</button>
+              </div>
+            </div>
+
+            {inventory.length === 0 && (
+              <div style={{ background: '#fff3e0', padding: '20px', borderRadius: '12px', marginBottom: '20px', textAlign: 'center' }}>
+                <div style={{ fontSize: '48px' }}>📦</div>
+                <h3 style={{ margin: '8px 0', color: '#E64A19' }}>No inventory items yet!</h3>
+                <p style={{ fontSize: '13px', color: '#666', marginBottom: '12px' }}>Click "Quick Add Common Items" above to load default Kaapfi inventory (Coffee, Milk, Paneer, etc.)</p>
+                <button onClick={quickAddCommonItems} style={{ padding: '12px 24px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>⚡ Load Default Inventory Now</button>
+              </div>
+            )}
+
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>➕ Add Ingredient</h3>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>➕ Add Ingredient</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px', marginBottom: '10px' }}>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Name</label>
-                  <input placeholder="e.g., Cheese" value={newInventoryItem.name} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, name: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Quantity</label>
-                  <input type="number" placeholder="2000" value={newInventoryItem.quantity} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, quantity: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Unit</label>
-                  <select value={newInventoryItem.unit} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, unit: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}>
-                    <option value="g">grams (g)</option><option value="kg">kilograms (kg)</option>
-                    <option value="ml">milliliters (ml)</option><option value="l">liters (l)</option>
-                    <option value="units">units (pcs)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '11px', color: '#666', fontWeight: '600' }}>Low Stock Alert</label>
-                  <input type="number" placeholder="200" value={newInventoryItem.threshold} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, threshold: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} />
-                </div>
+                <div><label style={{ fontSize: '11px', color: '#666' }}>Name</label><input placeholder="Cheese" value={newInventoryItem.name} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, name: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#666' }}>Quantity</label><input type="number" placeholder="2000" value={newInventoryItem.quantity} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, quantity: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px', color: '#666' }}>Unit</label><select value={newInventoryItem.unit} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, unit: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option value="g">g</option><option value="kg">kg</option><option value="ml">ml</option><option value="l">l</option><option value="units">units</option></select></div>
+                <div><label style={{ fontSize: '11px', color: '#666' }}>Threshold</label><input type="number" placeholder="200" value={newInventoryItem.threshold} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, threshold: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
               </div>
-              <button onClick={addInventoryItem} style={{ width: '100%', padding: '12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📦 Add to Inventory</button>
+              <button onClick={addInventoryItem} style={{ width: '100%', padding: '12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📦 Add</button>
             </div>
-
-            <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Total Items</div>
-                <div style={{ fontSize: '24px', fontWeight: '700', color: '#1a1a1a' }}>{inventory.length}</div>
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', color: '#666' }}>Low Stock Items</div>
-                <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>{inventory.filter(i => i.quantity < i.threshold).length}</div>
-              </div>
+            <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}>
+              <div><div style={{ fontSize: '13px', color: '#666' }}>Total Items</div><div style={{ fontSize: '24px', fontWeight: '700' }}>{inventory.length}</div></div>
+              <div><div style={{ fontSize: '13px', color: '#666' }}>Low Stock</div><div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>{inventory.filter(i => i.quantity < i.threshold).length}</div></div>
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
               {inventory.map(item => {
                 const isLow = item.quantity < item.threshold;
@@ -997,7 +1035,7 @@ export default function CafePOS() {
                         <input value={editingInventoryItem.name} onChange={(e) => setEditingInventoryItem({ ...editingInventoryItem, name: e.target.value })} style={{ width: '100%', padding: '6px', marginBottom: '4px', boxSizing: 'border-box' }} />
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', marginBottom: '4px' }}>
                           <input type="number" value={editingInventoryItem.quantity} onChange={(e) => setEditingInventoryItem({ ...editingInventoryItem, quantity: parseFloat(e.target.value) || 0 })} style={{ padding: '6px' }} />
-                          <input type="number" placeholder="Threshold" value={editingInventoryItem.threshold} onChange={(e) => setEditingInventoryItem({ ...editingInventoryItem, threshold: parseFloat(e.target.value) || 0 })} style={{ padding: '6px' }} />
+                          <input type="number" value={editingInventoryItem.threshold} onChange={(e) => setEditingInventoryItem({ ...editingInventoryItem, threshold: parseFloat(e.target.value) || 0 })} style={{ padding: '6px' }} />
                         </div>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button onClick={updateInventoryItem} style={{ flex: 1, padding: '6px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Save</button>
@@ -1006,12 +1044,12 @@ export default function CafePOS() {
                       </div>
                     ) : (
                       <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#1a1a1a' }}>{item.name}</div>
-                          {isLow && <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>LOW STOCK</span>}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <div style={{ fontSize: '15px', fontWeight: '700' }}>{item.name}</div>
+                          {isLow && <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 8px', borderRadius: '10px' }}>LOW</span>}
                         </div>
                         <div style={{ fontSize: '28px', fontWeight: '700', color: isLow ? '#E64A19' : '#4CAF50' }}>{item.quantity} <span style={{ fontSize: '14px', color: '#666' }}>{item.unit}</span></div>
-                        <div style={{ fontSize: '11px', color: '#666', marginTop: '4px' }}>Alert below: {item.threshold}{item.unit}</div>
+                        <div style={{ fontSize: '11px', color: '#666' }}>Alert below: {item.threshold}{item.unit}</div>
                         <div style={{ display: 'flex', gap: '4px', marginTop: '10px' }}>
                           <button onClick={() => adjustInventoryQuantity(item.id, -100)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>-100</button>
                           <button onClick={() => adjustInventoryQuantity(item.id, -10)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>-10</button>
@@ -1019,8 +1057,8 @@ export default function CafePOS() {
                           <button onClick={() => adjustInventoryQuantity(item.id, 100)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>+100</button>
                         </div>
                         <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
-                          <button onClick={() => setEditingInventoryItem({ ...item })} style={{ flex: 1, padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>✏️ Edit</button>
-                          <button onClick={() => deleteInventoryItem(item.id)} style={{ flex: 1, padding: '6px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>🗑️ Delete</button>
+                          <button onClick={() => setEditingInventoryItem({ ...item })} style={{ flex: 1, padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
+                          <button onClick={() => deleteInventoryItem(item.id)} style={{ flex: 1, padding: '6px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Delete</button>
                         </div>
                       </>
                     )}
@@ -1031,22 +1069,16 @@ export default function CafePOS() {
           </div>
         )}
 
-        {/* SOPs TAB */}
         {activeTab === 'sops' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>📋 Recipe SOPs (Standard Operating Procedures)</h2>
-            <div style={{ background: '#e3f2fd', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '13px', color: '#0066cc' }}>
-              💡 Define recipes for each menu item. When order is completed, inventory auto-deducts based on these SOPs.
-            </div>
-
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px' }}>📋 Recipe SOPs</h2>
             {editingSOP ? (
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
-                <h3 style={{ fontSize: '18px', margin: '0 0 12px', color: '#FC8019' }}>✏️ Editing: {editingSOP}</h3>
-                
+                <h3 style={{ fontSize: '18px', margin: '0 0 12px', color: '#FC8019' }}>✏️ {editingSOP}</h3>
                 {sopEditing.map((row, index) => (
                   <div key={index} style={{ display: 'grid', gridTemplateColumns: '1fr 100px auto 30px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
                     <select value={row.ingredient} onChange={(e) => updateSOPRow(index, 'ingredient', e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }}>
-                      <option value="">-- Select Ingredient --</option>
+                      <option value="">-- Select --</option>
                       {inventory.map(inv => <option key={inv.id} value={inv.name}>{inv.name} ({inv.unit})</option>)}
                     </select>
                     <input type="number" placeholder="Qty" value={row.quantity} onChange={(e) => updateSOPRow(index, 'quantity', e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }} />
@@ -1054,9 +1086,8 @@ export default function CafePOS() {
                     <button onClick={() => removeSOPRow(index)} style={{ padding: '8px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>×</button>
                   </div>
                 ))}
-
-                <button onClick={addSOPRow} style={{ padding: '10px 16px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', marginTop: '8px', marginRight: '8px' }}>+ Add Ingredient</button>
-                <button onClick={saveSOP} style={{ padding: '10px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', marginRight: '8px' }}>✅ Save SOP</button>
+                <button onClick={addSOPRow} style={{ padding: '10px 16px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', marginRight: '8px', marginTop: '8px' }}>+ Add</button>
+                <button onClick={saveSOP} style={{ padding: '10px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', marginRight: '8px' }}>✅ Save</button>
                 <button onClick={() => { setEditingSOP(null); setSopEditing([]); }} style={{ padding: '10px 16px', background: '#999', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
               </div>
             ) : (
@@ -1066,11 +1097,11 @@ export default function CafePOS() {
                   const hasSOP = sop.length > 0;
                   return (
                     <div key={item.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: hasSOP ? '2px solid #4CAF50' : '2px solid #ffcdd2' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ fontSize: '24px' }}>{item.emoji}</span>
                           <div>
-                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#1a1a1a' }}>{item.name}</div>
+                            <div style={{ fontSize: '14px', fontWeight: '700' }}>{item.name}</div>
                             <div style={{ fontSize: '11px', color: '#666' }}>₹{item.price}</div>
                           </div>
                         </div>
@@ -1079,15 +1110,11 @@ export default function CafePOS() {
                       {hasSOP && (
                         <div style={{ background: '#f9f9f9', padding: '10px', borderRadius: '6px', marginBottom: '8px' }}>
                           {sop.map((row, i) => (
-                            <div key={i} style={{ fontSize: '12px', color: '#333', marginBottom: '2px' }}>
-                              • {row.ingredient}: <strong>{row.quantity}{inventory.find(inv => inv.name === row.ingredient)?.unit || ''}</strong>
-                            </div>
+                            <div key={i} style={{ fontSize: '12px', marginBottom: '2px' }}>• {row.ingredient}: <strong>{row.quantity}{inventory.find(inv => inv.name === row.ingredient)?.unit || ''}</strong></div>
                           ))}
                         </div>
                       )}
-                      <button onClick={() => openSOPEditor(item.name)} style={{ width: '100%', padding: '8px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>
-                        {hasSOP ? '✏️ Edit SOP' : '➕ Create SOP'}
-                      </button>
+                      <button onClick={() => openSOPEditor(item.name)} style={{ width: '100%', padding: '8px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '12px' }}>{hasSOP ? '✏️ Edit' : '➕ Create'}</button>
                     </div>
                   );
                 })}
@@ -1096,55 +1123,45 @@ export default function CafePOS() {
           </div>
         )}
 
-        {/* KITCHEN TAB (Enhanced with SOPs) */}
         {activeTab === 'kitchen' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>👨‍🍳 Kitchen Display</h2>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px' }}>👨‍🍳 Kitchen</h2>
             <div style={{ display: 'grid', gap: '12px' }}>
-              {todayOrders.filter(o => (orderStatuses[o.id]?.status || 'in_progress') !== 'delivered').map(order => {
-                const status = orderStatuses[order.id] || { status: 'in_progress', startTime: order.startTime || Date.now() };
-                const elapsed = Math.floor((Date.now() - (status.startTime || Date.now())) / 60000);
+              {todayOrders.filter(o => (o.status || 'in_progress') !== 'delivered').map(order => {
+                const startTime = order.startTime || new Date(order.timestamp).getTime();
+                const elapsed = Math.floor((Date.now() - startTime) / 60000);
                 const isLate = elapsed > 10;
                 return (
                   <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: isLate ? '2px solid #E64A19' : '2px solid transparent' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                      <div style={{ fontWeight: '700', color: '#1a1a1a' }}>#{order.id.toString().slice(-5)} • {order.customerName}</div>
+                      <div style={{ fontWeight: '700' }}>#{order.id.toString().slice(-5)} • {order.customerName}</div>
                       <div style={{ background: isLate ? '#E64A19' : '#4CAF50', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>⏱️ {elapsed} min</div>
                     </div>
-                    
-                    {/* SOP Display */}
                     {order.items.map(item => {
                       const sop = menuSOPs[item.name] || [];
                       return (
                         <div key={item.id} style={{ background: '#fff3e0', padding: '12px', borderRadius: '8px', marginBottom: '8px' }}>
-                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#E64A19', marginBottom: '6px' }}>
-                            {item.emoji} {item.name} x{item.quantity}
-                          </div>
+                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#E64A19', marginBottom: '6px' }}>{item.emoji} {item.name} x{item.quantity}</div>
                           {sop.length > 0 ? (
                             <div style={{ paddingLeft: '12px' }}>
                               {sop.map((row, i) => {
                                 const unit = inventory.find(inv => inv.name === row.ingredient)?.unit || '';
-                                return (
-                                  <div key={i} style={{ fontSize: '13px', color: '#333', marginBottom: '2px' }}>
-                                    → {row.ingredient}: <strong>{row.quantity * item.quantity}{unit}</strong>
-                                  </div>
-                                );
+                                return <div key={i} style={{ fontSize: '13px', marginBottom: '2px' }}>→ {row.ingredient}: <strong>{row.quantity * item.quantity}{unit}</strong></div>;
                               })}
                             </div>
-                          ) : <div style={{ fontSize: '12px', color: '#999', fontStyle: 'italic', paddingLeft: '12px' }}>No recipe defined</div>}
+                          ) : <div style={{ fontSize: '12px', color: '#999', paddingLeft: '12px' }}>No recipe</div>}
                         </div>
                       );
                     })}
-
                     <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
-                      <button onClick={() => updateOrderStatus(order.id, 'in_progress')} style={{ padding: '8px 12px', background: status.status === 'in_progress' ? '#FF9800' : '#f0f0f0', color: status.status === 'in_progress' ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔥 Progress</button>
-                      <button onClick={() => updateOrderStatus(order.id, 'ready')} style={{ padding: '8px 12px', background: status.status === 'ready' ? '#4CAF50' : '#f0f0f0', color: status.status === 'ready' ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>✅ Ready</button>
+                      <button onClick={() => updateOrderStatus(order.id, 'in_progress')} style={{ padding: '8px 12px', background: order.status === 'in_progress' ? '#FF9800' : '#f0f0f0', color: order.status === 'in_progress' ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🔥 Progress</button>
+                      <button onClick={() => updateOrderStatus(order.id, 'ready')} style={{ padding: '8px 12px', background: order.status === 'ready' ? '#4CAF50' : '#f0f0f0', color: order.status === 'ready' ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>✅ Ready</button>
                       <button onClick={() => updateOrderStatus(order.id, 'delivered')} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📦 Done</button>
                     </div>
                   </div>
                 );
               })}
-              {todayOrders.filter(o => (orderStatuses[o.id]?.status || 'in_progress') !== 'delivered').length === 0 && (
+              {todayOrders.filter(o => (o.status || 'in_progress') !== 'delivered').length === 0 && (
                 <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#999' }}><div style={{ fontSize: '64px' }}>🎉</div><p>All done!</p></div>
               )}
             </div>
@@ -1153,35 +1170,31 @@ export default function CafePOS() {
 
         {activeTab === 'bills' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>🧾 Today's Orders</h2>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px' }}>🧾 Today's Orders</h2>
             {todayOrders.length > 0 && (
-              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={selectedBills.length === todayOrders.length && todayOrders.length > 0} onChange={selectAllBills} style={{ width: '18px', height: '18px' }} />
+              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input type="checkbox" checked={selectedBills.length === todayOrders.length} onChange={selectAllBills} style={{ width: '18px', height: '18px' }} />
                   <span style={{ fontSize: '13px', fontWeight: '600' }}>Select All ({selectedBills.length}/{todayOrders.length})</span>
                 </label>
                 <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  <button onClick={downloadTodayAll} style={{ padding: '8px 12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 All</button>
-                  {selectedBills.length > 0 && (
-                    <>
-                      <button onClick={downloadSelectedBills} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>📥 Selected ({selectedBills.length})</button>
-                      <button onClick={() => setShowDeletePassword('bills')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}>🗑️ Delete ({selectedBills.length})</button>
-                    </>
-                  )}
+                  <button onClick={downloadTodayAll} style={{ padding: '8px 12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>📥 All</button>
+                  {selectedBills.length > 0 && (<>
+                    <button onClick={downloadSelectedBills} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>📥 Selected</button>
+                    <button onClick={() => setShowDeletePassword('bills')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️ Delete</button>
+                  </>)}
                 </div>
               </div>
             )}
-            {todayOrders.length === 0 ? (
-              <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center' }}><div style={{ fontSize: '64px' }}>📭</div><p>No orders yet</p></div>
-            ) : (
+            {todayOrders.length === 0 ? <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center' }}>📭 No orders yet</div> : (
               <div style={{ display: 'grid', gap: '12px' }}>
                 {todayOrders.slice().reverse().map(order => (
-                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: selectedBills.includes(order.id) ? '2px solid #FC8019' : '2px solid transparent', display: 'flex', gap: '12px' }}>
+                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', display: 'flex', gap: '12px', border: selectedBills.includes(order.id) ? '2px solid #FC8019' : '2px solid transparent' }}>
                     <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleBill(order.id)} style={{ width: '20px', height: '20px', marginTop: '4px' }} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                         <div>
-                          <div style={{ fontWeight: '700', color: '#1a1a1a' }}>#{order.id.toString().slice(-5)}</div>
+                          <div style={{ fontWeight: '700' }}>#{order.id.toString().slice(-5)}</div>
                           <div style={{ fontSize: '12px', color: '#666' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
@@ -1189,7 +1202,7 @@ export default function CafePOS() {
                           <div style={{ fontSize: '11px', color: '#666', textTransform: 'uppercase' }}>{order.paymentMethod}</div>
                         </div>
                       </div>
-                      <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
+                      <div style={{ fontSize: '12px', color: '#888', margin: '8px 0' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
                       <button onClick={() => downloadSingleBill(order)} style={{ padding: '6px 12px', background: '#fff', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>📥 CSV</button>
                     </div>
                   </div>
@@ -1201,9 +1214,9 @@ export default function CafePOS() {
 
         {activeTab === 'reports' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#1a1a1a' }}>📊 Reports</h2>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px' }}>📊 Reports</h2>
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>📥 Date Range</h3>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>📥 Date Range</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
                 <div><label style={{ fontSize: '11px', color: '#666' }}>From</label><input type="date" value={csvStartDate} onChange={(e) => setCsvStartDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
                 <div><label style={{ fontSize: '11px', color: '#666' }}>To</label><input type="date" value={csvEndDate} onChange={(e) => setCsvEndDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
@@ -1211,51 +1224,12 @@ export default function CafePOS() {
               </div>
             </div>
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#1a1a1a' }}>📱 By Phone</h3>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>📱 By Phone</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px' }}>
-                <input type="tel" placeholder="Phone number" value={csvPhone} onChange={(e) => setCsvPhone(e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }} />
+                <input type="tel" placeholder="Phone" value={csvPhone} onChange={(e) => setCsvPhone(e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px' }} />
                 <button onClick={downloadByPhone} style={{ padding: '10px 20px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '600' }}>📥 Download</button>
               </div>
             </div>
-          </div>
-        )}
-
-        {activeTab === 'firebase' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '24px', margin: 0 }}>☁️ Cloud Orders</h2>
-              <button onClick={loadCloudOrders} style={{ padding: '10px 20px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>{loadingCloud ? '⏳' : '🔄'}</button>
-            </div>
-            {firebaseOrders.length > 0 && (
-              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={selectedCloudOrders.length === firebaseOrders.length} onChange={selectAllCloud} style={{ width: '18px', height: '18px' }} />
-                  <span style={{ fontSize: '13px', fontWeight: '600' }}>Select All ({selectedCloudOrders.length}/{firebaseOrders.length})</span>
-                </label>
-                {selectedCloudOrders.length > 0 && (
-                  <button onClick={() => setShowDeletePassword('cloud')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️ Delete ({selectedCloudOrders.length})</button>
-                )}
-              </div>
-            )}
-            {firebaseOrders.length === 0 ? <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center' }}>☁️ No cloud orders</div> : (
-              <div style={{ display: 'grid', gap: '12px' }}>
-                {firebaseOrders.map(order => (
-                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', display: 'flex', gap: '12px', border: selectedCloudOrders.includes(order.id) ? '2px solid #FC8019' : '2px solid transparent' }}>
-                    <input type="checkbox" checked={selectedCloudOrders.includes(order.id)} onChange={() => toggleCloudOrder(order.id)} style={{ width: '20px', height: '20px', marginTop: '4px' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <div>
-                          <div style={{ fontWeight: '700' }}>{order.customerName || 'Walk-in'} {order.customerPhone && `• ${order.customerPhone}`}</div>
-                          <div style={{ fontSize: '12px', color: '#666' }}>{order.date} • {order.time}</div>
-                        </div>
-                        <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019' }}>₹{order.total?.toFixed(0)}</div>
-                      </div>
-                      <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
@@ -1276,7 +1250,7 @@ export default function CafePOS() {
               </div>
             </div>
             {menuItems.length > 0 && (
-              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <input type="checkbox" checked={selectedMenuItems.length === menuItems.length} onChange={selectAllMenu} style={{ width: '18px', height: '18px' }} />
                   <span style={{ fontSize: '13px', fontWeight: '600' }}>Select All ({selectedMenuItems.length}/{menuItems.length})</span>
@@ -1303,7 +1277,7 @@ export default function CafePOS() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <div style={{ fontSize: '28px' }}>{item.emoji}</div>
                           <div>
-                            <div style={{ fontWeight: '600', color: '#1a1a1a', fontSize: '13px' }}>{item.name}</div>
+                            <div style={{ fontWeight: '600', fontSize: '13px' }}>{item.name}</div>
                             <div style={{ fontSize: '11px', color: '#666' }}>{item.category} • ₹{item.price}</div>
                           </div>
                         </div>
@@ -1321,21 +1295,21 @@ export default function CafePOS() {
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px' }}>🎁 Promos</h2>
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 16px' }}>Generate Codes (Min 1)</h3>
+              <h3 style={{ fontSize: '16px', margin: '0 0 16px' }}>Generate (Min 1)</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '12px' }}>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Count</label><input type="number" min="1" value={promoCount} onChange={(e) => setPromoCount(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Type</label><select value={promoType} onChange={(e) => setPromoType(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option value="percent">%</option><option value="flat">₹</option></select></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Value</label><input type="number" value={promoValue} onChange={(e) => setPromoValue(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>Usage Limit</label><input type="number" min="1" value={promoUsageLimit} onChange={(e) => setPromoUsageLimit(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px' }}>Count</label><input type="number" min="1" value={promoCount} onChange={(e) => setPromoCount(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px' }}>Type</label><select value={promoType} onChange={(e) => setPromoType(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }}><option value="percent">%</option><option value="flat">₹</option></select></div>
+                <div><label style={{ fontSize: '11px' }}>Value</label><input type="number" value={promoValue} onChange={(e) => setPromoValue(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px' }}>Usage</label><input type="number" min="1" value={promoUsageLimit} onChange={(e) => setPromoUsageLimit(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>🔓 Activation</label><input type="date" value={promoActivationDate} onChange={(e) => setPromoActivationDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #4CAF50', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#666' }}>⏰ Expiry</label><input type="date" value={promoExpiryDate} onChange={(e) => setPromoExpiryDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #E64A19', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px' }}>🔓 Activation</label><input type="date" value={promoActivationDate} onChange={(e) => setPromoActivationDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #4CAF50', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
+                <div><label style={{ fontSize: '11px' }}>⏰ Expiry</label><input type="date" value={promoExpiryDate} onChange={(e) => setPromoExpiryDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #E64A19', borderRadius: '6px', boxSizing: 'border-box' }} /></div>
               </div>
-              <button onClick={generatePromos} style={{ width: '100%', padding: '14px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>🎁 Generate {promoCount} Code{promoCount > 1 ? 's' : ''}</button>
+              <button onClick={generatePromos} style={{ width: '100%', padding: '14px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700' }}>🎁 Generate {promoCount}</button>
             </div>
             {promoCodes.length > 0 && (
-              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <input type="checkbox" checked={selectedPromos.length === promoCodes.length} onChange={selectAllPromos} style={{ width: '18px', height: '18px' }} />
                   <span style={{ fontSize: '13px', fontWeight: '600' }}>Select All ({selectedPromos.length}/{promoCodes.length})</span>
@@ -1353,14 +1327,14 @@ export default function CafePOS() {
                   <div key={i} style={{ background: isUsed || expired ? '#f5f5f5' : '#fff', padding: '14px', borderRadius: '10px', opacity: isUsed || expired ? 0.6 : 1, border: selectedPromos.includes(i) ? '2px solid #FC8019' : '1px solid #e0e0e0', display: 'flex', gap: '10px' }}>
                     <input type="checkbox" checked={selectedPromos.includes(i)} onChange={() => togglePromo(i)} style={{ width: '18px', height: '18px', marginTop: '4px' }} />
                     <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <div style={{ fontSize: '16px', fontWeight: '700', color: '#FC8019', fontFamily: 'monospace' }}>{p.code}</div>
                         {isUsed && <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>USED</span>}
                         {notYet && <span style={{ fontSize: '10px', background: '#FF9800', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>SOON</span>}
-                        {expired && <span style={{ fontSize: '10px', background: '#999', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>EXPIRED</span>}
+                        {expired && <span style={{ fontSize: '10px', background: '#999', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>EXP</span>}
                       </div>
-                      <div style={{ fontSize: '13px', color: '#333', fontWeight: '600' }}>{p.discountType === 'flat' ? '₹' : ''}{p.discountValue}{p.discountType === 'percent' ? '%' : ''} off</div>
-                      <div style={{ fontSize: '10px', color: '#666', marginTop: '2px' }}>{new Date(p.activationDate || p.createdAt).toLocaleDateString()} - {new Date(p.expiryDate).toLocaleDateString()}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '600' }}>{p.discountType === 'flat' ? '₹' : ''}{p.discountValue}{p.discountType === 'percent' ? '%' : ''} off</div>
+                      <div style={{ fontSize: '10px', color: '#666' }}>{new Date(p.activationDate || p.createdAt).toLocaleDateString()} - {new Date(p.expiryDate).toLocaleDateString()}</div>
                       {!isUsed && !expired && (
                         <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
                           <button onClick={() => copyPromoCode(p.code)} style={{ flex: 1, padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '700' }}>📋</button>
@@ -1380,31 +1354,30 @@ export default function CafePOS() {
             <h2 style={{ fontSize: '24px', margin: '0 0 20px' }}>👥 Customers</h2>
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input type="tel" placeholder="10-digit phone..." value={lookupPhone} onChange={(e) => setLookupPhone(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && performLookup()} style={{ flex: 1, padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '16px' }} />
-                <button onClick={performLookup} style={{ padding: '12px 24px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700' }}>{lookupLoading ? '⏳' : '🔍 Search'}</button>
+                <input type="tel" placeholder="Phone..." value={lookupPhone} onChange={(e) => setLookupPhone(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && performLookup()} style={{ flex: 1, padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '16px' }} />
+                <button onClick={performLookup} style={{ padding: '12px 24px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700' }}>{lookupLoading ? '⏳' : '🔍'}</button>
               </div>
             </div>
             {lookupCustomer && (
               <div style={{ background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', padding: '24px', borderRadius: '12px', color: '#fff', marginBottom: '16px' }}>
-                <div style={{ fontSize: '14px', opacity: 0.9 }}>Customer</div>
                 <div style={{ fontSize: '28px', fontWeight: '700' }}>{lookupCustomer.name || 'Customer'}</div>
                 <div style={{ fontSize: '13px', opacity: 0.9 }}>📱 {lookupCustomer.phone}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginTop: '16px' }}>
-                  <div><div style={{ fontSize: '11px', opacity: 0.9 }}>Points</div><div style={{ fontSize: '24px', fontWeight: '700' }}>{lookupCustomer.loyaltyPoints || 0}</div></div>
-                  <div><div style={{ fontSize: '11px', opacity: 0.9 }}>Orders</div><div style={{ fontSize: '24px', fontWeight: '700' }}>{lookupCustomer.totalOrders || 0}</div></div>
-                  <div><div style={{ fontSize: '11px', opacity: 0.9 }}>Spent</div><div style={{ fontSize: '24px', fontWeight: '700' }}>₹{lookupCustomer.totalSpent || 0}</div></div>
+                  <div><div style={{ fontSize: '11px' }}>Points</div><div style={{ fontSize: '24px', fontWeight: '700' }}>{lookupCustomer.loyaltyPoints || 0}</div></div>
+                  <div><div style={{ fontSize: '11px' }}>Orders</div><div style={{ fontSize: '24px', fontWeight: '700' }}>{lookupCustomer.totalOrders || 0}</div></div>
+                  <div><div style={{ fontSize: '11px' }}>Spent</div><div style={{ fontSize: '24px', fontWeight: '700' }}>₹{lookupCustomer.totalSpent || 0}</div></div>
                 </div>
               </div>
             )}
             {!lookupCustomer && allCustomers.length > 0 && (
               <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
-                <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>🏆 Top Customers ({allCustomers.length})</h3>
+                <h3 style={{ fontSize: '16px', margin: '0 0 12px' }}>🏆 Top ({allCustomers.length})</h3>
                 <div style={{ display: 'grid', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
                   {allCustomers.slice(0, 20).map(c => (
                     <div key={c.phone} onClick={() => { setLookupPhone(c.phone); performLookup(); }} style={{ padding: '12px', background: '#f9f9f9', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
                       <div>
                         <div style={{ fontWeight: '700' }}>{c.name || 'Customer'} • {c.phone}</div>
-                        <div style={{ fontSize: '11px', color: '#666' }}>{c.totalOrders} orders • 🏆 {c.loyaltyPoints} pts</div>
+                        <div style={{ fontSize: '11px', color: '#666' }}>{c.totalOrders} orders • 🏆 {c.loyaltyPoints}</div>
                       </div>
                       <div style={{ fontSize: '16px', fontWeight: '700', color: '#FC8019' }}>₹{c.totalSpent}</div>
                     </div>
@@ -1418,18 +1391,21 @@ export default function CafePOS() {
         {activeTab === 'settings' && (
           <div style={{ maxWidth: '700px' }}>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px' }}>⚙️ Settings</h2>
+            <div style={{ background: '#e8f5e9', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#2E7D32' }}>
+              🔄 <strong>All changes sync to ALL devices instantly!</strong>
+            </div>
             <div style={{ background: '#fff', padding: '24px', borderRadius: '12px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019' }}>Cafe Info</h3>
               {[{ key: 'cafeName', label: 'Name' }, { key: 'tagline', label: 'Tagline' }, { key: 'phone', label: 'Phone' }, { key: 'address', label: 'Address' }].map(f => (
                 <div key={f.key} style={{ marginBottom: '12px' }}>
-                  <label style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '4px', display: 'block' }}>{f.label}</label>
-                  <input type="text" value={settings[f.key]} onChange={(e) => setSettings({ ...settings, [f.key]: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '6px', boxSizing: 'border-box' }} />
+                  <label style={{ fontSize: '13px', color: '#666', fontWeight: '600', display: 'block', marginBottom: '4px' }}>{f.label}</label>
+                  <input type="text" value={settings[f.key]} onChange={(e) => updateSettings({ ...settings, [f.key]: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '6px', boxSizing: 'border-box' }} />
                 </div>
               ))}
               <div style={{ padding: '12px', background: '#fff3e0', borderRadius: '8px', marginTop: '16px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={settings.preventNegativeStock} onChange={(e) => setSettings({ ...settings, preventNegativeStock: e.target.checked })} style={{ width: '18px', height: '18px' }} />
-                  <span style={{ fontSize: '13px', fontWeight: '600' }}>🔒 Block orders if stock insufficient</span>
+                  <input type="checkbox" checked={settings.preventNegativeStock} onChange={(e) => updateSettings({ ...settings, preventNegativeStock: e.target.checked })} style={{ width: '18px', height: '18px' }} />
+                  <span style={{ fontSize: '13px', fontWeight: '600' }}>🔒 Block orders if insufficient stock</span>
                 </label>
               </div>
               <div style={{ padding: '12px', background: '#fff3e0', borderRadius: '8px', fontSize: '12px', color: '#E64A19', marginTop: '12px' }}>🔒 Delete Password: 9923022925</div>
@@ -1440,7 +1416,7 @@ export default function CafePOS() {
 
       <footer style={{ background: '#fff', borderTop: '1px solid #eee', padding: '20px 24px', marginTop: '40px', textAlign: 'center', color: '#666', fontSize: '13px' }}>
         <div>{settings.cafeName} • {settings.address}</div>
-        <div style={{ fontSize: '11px', marginTop: '4px' }}>{settings.phone} • Powered by Firebase ☁️</div>
+        <div style={{ fontSize: '11px', marginTop: '4px' }}>v4.2 • Real-Time Multi-Device Sync ☁️</div>
       </footer>
     </div>
   );
