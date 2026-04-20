@@ -565,7 +565,14 @@ export default function CafePOS() {
   };
 
   // INVENTORY FUNCTIONS - ALL CLOUD SYNC
-
+  const addInventoryItem = async () => {
+    if (!newInventoryItem.name || !newInventoryItem.quantity) { alert('Fill name & quantity'); return; }
+    const id = Math.max(...inventory.map(i => i.id), 0) + 1;
+    const updated = [...inventory, { ...newInventoryItem, id, quantity: parseFloat(newInventoryItem.quantity), threshold: parseFloat(newInventoryItem.threshold) || 0 }];
+    await saveInventoryToCloud(updated);
+    setNewInventoryItem({ name: '', quantity: '', unit: 'g', threshold: '' });
+    alert('✅ Added & synced!');
+  };
 
   const deleteInventoryItem = async (id) => {
     if (window.confirm('Delete this ingredient?')) {
