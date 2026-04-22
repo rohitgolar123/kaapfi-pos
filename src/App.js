@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot, enableIndexedDbPersistence, orderBy } from "firebase/firestore";
-
 const firebaseConfig = {
   apiKey: "AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc",
   authDomain: "kaapfi-pos.firebaseapp.com",
@@ -11,17 +10,14 @@ const firebaseConfig = {
   appId: "1:841260204036:web:8a614c8b0ff3ac4d81f551",
   measurementId: "G-ZC3CPTHBYG"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-
 // Enable offline persistence for better real-time experience
 try {
   enableIndexedDbPersistence(db).catch(() => {});
 } catch (e) {}
 const CAFE_PASSWORD = "Kaapfi@737";
 const DELETE_PASSWORD = "9923022925";
-
 const defaultSettings = {
   cafeName: "Kaapfi 90's",
   tagline: "Jo Hai Kaapfi Hai",
@@ -39,7 +35,6 @@ const defaultSettings = {
   receiptSize: "80mm",
   preventNegativeStock: false,
 };
-
 const defaultMenu = [
   { id: 1, name: 'Milk Filter Coffee', price: 20, category: 'Kaapfi Hot', emoji: '☕' },
   { id: 2, name: 'Black Filter Coffee', price: 20, category: 'Kaapfi Hot', emoji: '☕' },
@@ -72,7 +67,6 @@ const defaultMenu = [
   { id: 29, name: 'Smokey BBQ Chicken', price: 99, category: 'Malabar Paratha', emoji: '🔥' },
   { id: 30, name: 'Crispy Creamy Chicken', price: 125, category: 'Malabar Paratha', emoji: '🍗' },
 ];
-
 const defaultInventory = [
   { id: 1, name: 'Filter Coffee Powder', quantity: 2000, unit: 'g', threshold: 200 },
   { id: 2, name: 'Milk', quantity: 10000, unit: 'ml', threshold: 1000 },
@@ -85,7 +79,6 @@ const defaultInventory = [
   { id: 9, name: 'Chicken', quantity: 2000, unit: 'g', threshold: 300 },
   { id: 10, name: 'Onion', quantity: 2000, unit: 'g', threshold: 200 },
 ];
-
 const defaultSOPs = {
   'Milk Filter Coffee': [{ ingredient: 'Filter Coffee Powder', quantity: 15 }, { ingredient: 'Milk', quantity: 100 }],
   'Classic Cold Brew': [{ ingredient: 'Cold Brew Concentrate', quantity: 150 }, { ingredient: 'Ice', quantity: 50 }],
@@ -93,39 +86,29 @@ const defaultSOPs = {
   'Chicken Achari': [{ ingredient: 'Chicken', quantity: 80 }, { ingredient: 'Gravy Base', quantity: 100 }, { ingredient: 'Paratha', quantity: 1 }, { ingredient: 'Onion', quantity: 20 }],
   'Thatte Idli': [{ ingredient: 'Idli Batter', quantity: 150 }],
 };
-
 // FIREBASE HELPERS - ALL DATA SYNCED TO CLOUD
-
 async function saveInventoryToCloud(inventory) {
   try { await setDoc(doc(db, "appData", "inventory"), { items: inventory, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
-
 async function saveExpensesToCloud(expenses) {
   try { await setDoc(doc(db, "appData", "expenses"), { items: expenses, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
-
 async function saveMenuToCloud(menu) {
   try { await setDoc(doc(db, "appData", "menu"), { items: menu, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
-
 async function saveSOPsToCloud(sops) {
   try { await setDoc(doc(db, "appData", "sops"), { data: sops, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
-
 async function savePromosToCloud(promos) {
   try { await setDoc(doc(db, "appData", "promos"), { items: promos, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
-
 async function saveSettingsToCloud(settings) {
   try { await setDoc(doc(db, "appData", "settings"), { data: settings, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
-
 async function saveOrderToFirebase(order) {
   try { const docRef = await addDoc(collection(db, "orders"), { ...order, timestamp: new Date().toISOString() }); return docRef.id; } catch (e) { return null; }
 }
-
 async function deleteOrderFromFirebase(docId) { try { await deleteDoc(doc(db, "orders", docId)); return true; } catch (e) { return false; } }
-
 async function saveCustomer(phone, orderData) {
   try {
     const customerRef = doc(db, "customers", phone);
@@ -140,9 +123,7 @@ async function saveCustomer(phone, orderData) {
     return true;
   } catch (e) { return false; }
 }
-
 async function getCustomer(phone) { try { const snap = await getDoc(doc(db, "customers", phone)); return snap.exists() ? snap.data() : null; } catch (e) { return null; } }
-
 async function getCustomerOrders(phone) {
   try {
     const q = query(collection(db, "orders"), where("customerPhone", "==", phone));
@@ -152,11 +133,9 @@ async function getCustomerOrders(phone) {
     return orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   } catch (e) { return []; }
 }
-
 async function getAllCustomers() {
   try { const snap = await getDocs(collection(db, "customers")); const customers = []; snap.forEach(d => customers.push({ id: d.id, ...d.data() })); return customers.sort((a, b) => (b.totalSpent || 0) - (a.totalSpent || 0)); } catch (e) { return []; }
 }
-
 function checkSpecialLoyalty(customerData, settings) {
   if (!customerData || !customerData.visitHistory) return { eligible: false };
   const now = new Date();
@@ -169,9 +148,7 @@ function checkSpecialLoyalty(customerData, settings) {
   if (recentVisits.length >= settings.specialLoyaltyVisits) return { eligible: true, discountValue: settings.specialLoyaltyDiscount, visits: recentVisits.length };
   return { eligible: false };
 }
-
 function generatePromoCode() { return 'KF' + Math.random().toString(36).substring(2, 6).toUpperCase(); }
-
 function getAIRecommendation(customerOrders, menu) {
   if (!customerOrders || customerOrders.length === 0) return { message: "👋 New customer! Try our Classic Iced Filter ☕", items: [] };
   const itemCounts = {};
@@ -186,10 +163,9 @@ function getAIRecommendation(customerOrders, menu) {
   else message = `Our VIP is here! 🌟 Same great ${favItem}?`;
   return { message, items: favorites.map(([name, count]) => ({ name, count })) };
 }
-
 function downloadCSV(data, filename) {
-  const csv = ['Date,Time,Customer,Phone,Items,Subtotal,Discount,Total,Payment',
-    ...data.map(o => `"${o.date}","${o.time}","${o.customerName || ''}","${o.customerPhone || ''}","${(o.items || []).map(i => `${i.name} x${i.quantity}`).join('; ')}",${o.subtotal || 0},${o.totalDiscount || 0},${o.total || 0},${o.paymentMethod || ''}`)
+  const csv = ['Date,Time,Table,Customer,Phone,Items,Subtotal,Discount,Total,Payment',
+    ...data.map(o => `"${o.date}","${o.time}","${o.tableNumber || ''}","${o.customerName || ''}","${o.customerPhone || ''}","${(o.items || []).map(i => `${i.name} x${i.quantity}`).join('; ')}",${o.subtotal || 0},${o.totalDiscount || 0},${o.total || 0},${o.paymentMethod || ''}`)
   ].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -197,7 +173,6 @@ function downloadCSV(data, filename) {
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
-
 export default function CafePOS() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [loginInput, setLoginInput] = useState('');
@@ -209,6 +184,7 @@ export default function CafePOS() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [selectedTable, setSelectedTable] = useState(null);
   const [customerData, setCustomerData] = useState(null);
   const [customerOrders, setCustomerOrders] = useState([]);
   const [settings, setSettings] = useState(defaultSettings);
@@ -242,7 +218,7 @@ export default function CafePOS() {
   const [csvStartDate, setCsvStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [csvEndDate, setCsvEndDate] = useState(new Date().toISOString().split('T')[0]);
   const [csvPhone, setCsvPhone] = useState('');
-  
+
   // Marketing - password protected
   const [marketingUnlocked, setMarketingUnlocked] = useState(false);
   const [marketingPassword, setMarketingPassword] = useState('');
@@ -256,43 +232,38 @@ export default function CafePOS() {
   const [newExpense, setNewExpense] = useState({ description: '', amount: '', category: 'General', paidBy: 'cash' });
   const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
   const [syncStatus, setSyncStatus] = useState('connected'); // connected, syncing, offline
-
   // LOGIN CHECK
   useEffect(() => {
     const loggedIn = localStorage.getItem('kaapfi_loggedIn');
     if (loggedIn === 'true') setIsLoggedIn(true);
   }, []);
-
   // REAL-TIME FIREBASE LISTENERS - SYNC ACROSS ALL DEVICES
   useEffect(() => {
     if (!isLoggedIn) return;
-
     setSyncStatus('syncing');
-
     // ORDERS - Real-time sync with immediate updates
     const unsubOrders = onSnapshot(
-      collection(db, "orders"), 
+      collection(db, "orders"),
       { includeMetadataChanges: true }, // Listen to local changes too
       (snapshot) => {
         const allOrders = [];
         snapshot.forEach(doc => {
           const data = doc.data();
-          allOrders.push({ 
-            id: data.id || doc.id, 
-            firebaseDocId: doc.id, 
-            ...data 
+          allOrders.push({
+            id: data.id || doc.id,
+            firebaseDocId: doc.id,
+            ...data
           });
         });
         allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         setOrders(allOrders);
         setSyncStatus(snapshot.metadata.fromCache ? 'syncing' : 'connected');
-      }, 
+      },
       (error) => {
         console.error('Orders sync error:', error);
         setSyncStatus('offline');
       }
     );
-
     // INVENTORY - Real-time sync with auto-initialization
     const unsubInventory = onSnapshot(doc(db, "appData", "inventory"), (snap) => {
       if (snap.exists()) {
@@ -310,12 +281,10 @@ export default function CafePOS() {
         saveInventoryToCloud(defaultInventory);
       }
     });
-
     // EXPENSES - Real-time sync
     const unsubExpenses = onSnapshot(doc(db, "appData", "expenses"), (snap) => {
       if (snap.exists()) setExpenses(snap.data().items || []);
     });
-
     // MENU - Real-time sync
     const unsubMenu = onSnapshot(doc(db, "appData", "menu"), (snap) => {
       if (snap.exists()) {
@@ -324,7 +293,6 @@ export default function CafePOS() {
         saveMenuToCloud(defaultMenu);
       }
     });
-
     // SOPs - Real-time sync
     const unsubSOPs = onSnapshot(doc(db, "appData", "sops"), (snap) => {
       if (snap.exists()) {
@@ -333,17 +301,14 @@ export default function CafePOS() {
         saveSOPsToCloud(defaultSOPs);
       }
     });
-
     // PROMOS - Real-time sync
     const unsubPromos = onSnapshot(doc(db, "appData", "promos"), (snap) => {
       if (snap.exists()) setPromoCodes(snap.data().items || []);
     });
-
     // SETTINGS - Real-time sync
     const unsubSettings = onSnapshot(doc(db, "appData", "settings"), (snap) => {
       if (snap.exists()) setSettings({ ...defaultSettings, ...snap.data().data });
     });
-
     // Cleanup on unmount
     return () => {
       unsubOrders();
@@ -355,18 +320,15 @@ export default function CafePOS() {
       unsubSettings();
     };
   }, [isLoggedIn]);
-
   // Load customers when tab opened
   useEffect(() => {
     if (activeTab === 'customers' && isLoggedIn) loadAllCustomers();
   }, [activeTab, isLoggedIn]);
-
   const handleLogin = () => {
     if (loginInput === CAFE_PASSWORD) { setIsLoggedIn(true); localStorage.setItem('kaapfi_loggedIn', 'true'); setLoginError(''); setLoginInput(''); }
     else { setLoginError('❌ Wrong password!'); }
   };
   const handleLogout = () => { setIsLoggedIn(false); localStorage.removeItem('kaapfi_loggedIn'); setCurrentOrder([]); };
-
   // Clear all local cache and force fresh sync from Firebase
   const clearLocalCache = async () => {
     if (window.confirm('⚠️ This will:\n\n1. Clear all local browser cache\n2. Re-sync fresh data from Firebase\n3. Ensure both devices show SAME data\n\nContinue?')) {
@@ -379,17 +341,16 @@ export default function CafePOS() {
           }
         }
       } catch (e) {}
-      
+
       // Clear localStorage except login
       const loginState = localStorage.getItem('kaapfi_loggedIn');
       localStorage.clear();
       if (loginState) localStorage.setItem('kaapfi_loggedIn', loginState);
-      
+
       alert('✅ Cache cleared! Reloading...');
       window.location.reload();
     }
   };
-
   // Manual refresh - forces fresh data from Firebase
   const forceRefresh = async () => {
     setSyncStatus('syncing');
@@ -403,17 +364,15 @@ export default function CafePOS() {
       });
       allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       setOrders(allOrders);
-
       // Refetch app data
       const invSnap = await getDoc(doc(db, "appData", "inventory"));
       if (invSnap.exists()) setInventory(invSnap.data().items || []);
-      
+
       const expSnap = await getDoc(doc(db, "appData", "expenses"));
       if (expSnap.exists()) setExpenses(expSnap.data().items || []);
-      
+
       const menuSnap = await getDoc(doc(db, "appData", "menu"));
       if (menuSnap.exists()) setMenuItems(menuSnap.data().items || defaultMenu);
-
       setSyncStatus('connected');
       alert('✅ Data refreshed from cloud!');
     } catch (e) {
@@ -421,9 +380,7 @@ export default function CafePOS() {
       alert('❌ Refresh failed. Check internet.');
     }
   };
-
   const loadAllCustomers = async () => { const customers = await getAllCustomers(); setAllCustomers(customers); };
-
   const performLookup = async () => {
     if (lookupPhone.length < 10) { alert('Enter 10-digit phone'); return; }
     setLookupLoading(true);
@@ -433,7 +390,6 @@ export default function CafePOS() {
     else { setLookupOrders([]); setLookupAI(null); }
     setLookupLoading(false);
   };
-
   const handlePhoneChange = async (phone) => {
     setCustomerPhone(phone);
     if (phone.length >= 10) {
@@ -443,7 +399,6 @@ export default function CafePOS() {
       else { setCustomerOrders([]); }
     } else { setCustomerData(null); setCustomerOrders([]); }
   };
-
   const checkStockAvailability = (orderItems) => {
     const requiredStock = {};
     orderItems.forEach(item => {
@@ -457,7 +412,6 @@ export default function CafePOS() {
     });
     return { sufficient: insufficient.length === 0, insufficient, requiredStock };
   };
-
   const deductInventory = async (orderItems) => {
     const newInventory = [...inventory];
     orderItems.forEach(item => {
@@ -469,7 +423,6 @@ export default function CafePOS() {
     });
     await saveInventoryToCloud(newInventory);
   };
-
   const addToOrder = (item) => {
     const existing = currentOrder.find(o => o.id === item.id);
     if (existing) setCurrentOrder(currentOrder.map(o => o.id === item.id ? { ...o, quantity: o.quantity + 1 } : o));
@@ -477,7 +430,6 @@ export default function CafePOS() {
   };
   const removeFromOrder = (id) => setCurrentOrder(currentOrder.filter(o => o.id !== id));
   const updateQuantity = (id, qty) => { if (qty <= 0) removeFromOrder(id); else setCurrentOrder(currentOrder.map(o => o.id === id ? { ...o, quantity: qty } : o)); };
-
   const subtotal = currentOrder.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const manualDiscount = manualDiscountType === 'flat' ? parseFloat(manualDiscountValue) || 0 : (subtotal * (parseFloat(manualDiscountValue) || 0) / 100);
   const promoDiscount = appliedPromo ? (appliedPromo.discountType === 'flat' ? appliedPromo.discountValue : (subtotal * appliedPromo.discountValue / 100)) : 0;
@@ -488,7 +440,6 @@ export default function CafePOS() {
   const afterDiscount = Math.max(0, subtotal - totalDiscount);
   const tax = afterDiscount * (settings.taxRate / 100);
   const total = afterDiscount + tax;
-
   const applyPromo = () => {
     const p = promoCodes.find(pc => pc.code === promoCode.toUpperCase());
     if (!p) { alert('❌ Invalid code'); return; }
@@ -498,7 +449,6 @@ export default function CafePOS() {
     setAppliedPromo(p);
     alert(`✅ Applied!`);
   };
-
   const completeOrder = async () => {
     if (currentOrder.length === 0) { alert('Add items'); return; }
     const stockCheck = checkStockAvailability(currentOrder);
@@ -512,7 +462,9 @@ export default function CafePOS() {
     const order = {
       id: Date.now(), items: currentOrder, subtotal, manualDiscount, promoDiscount, loyaltyRedemption, specialDiscount, totalDiscount,
       afterDiscount, tax, total, paymentMethod,
-      customerName: customerName || 'Walk-in', customerPhone: customerPhone || '',
+      tableNumber: selectedTable,
+      customerName: customerName || (selectedTable ? `Table ${selectedTable}` : 'Walk-in'),
+      customerPhone: customerPhone || '',
       timestamp: now.toISOString(), // ISO format for consistent sync
       date: now.toISOString().split('T')[0], // YYYY-MM-DD
       time: now.toLocaleTimeString(),
@@ -528,11 +480,10 @@ export default function CafePOS() {
     await deductInventory(currentOrder);
     setCurrentOrder([]); setCustomerName(''); setCustomerPhone(''); setCustomerData(null);
     setCustomerOrders([]); setPaymentMethod('cash'); setManualDiscountValue(0);
-    setPromoCode(''); setAppliedPromo(null); setRedeemPoints(0);
+    setPromoCode(''); setAppliedPromo(null); setRedeemPoints(0); setSelectedTable(null);
     setSyncStatus('connected');
     alert(firebaseDocId ? '✅ Saved & synced to all devices!' : '⚠️ Check internet connection');
   };
-
   const bulkDeleteBills = async () => {
     if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
     if (selectedBills.length === 0) { alert('Select bills'); return; }
@@ -540,7 +491,6 @@ export default function CafePOS() {
     setSelectedBills([]); setShowDeletePassword(null); setDeletePassword('');
     alert(`✅ ${selectedBills.length} bills deleted!`);
   };
-
   const bulkDeletePromos = async () => {
     if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
     if (selectedPromos.length === 0) { alert('Select codes'); return; }
@@ -549,7 +499,6 @@ export default function CafePOS() {
     setSelectedPromos([]); setShowDeletePassword(null); setDeletePassword('');
     alert(`✅ ${selectedPromos.length} codes deleted!`);
   };
-
   const bulkDeleteMenu = async () => {
     if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
     if (selectedMenuItems.length === 0) { alert('Select items'); return; }
@@ -558,14 +507,12 @@ export default function CafePOS() {
     setSelectedMenuItems([]); setShowDeletePassword(null); setDeletePassword('');
     alert(`✅ ${selectedMenuItems.length} items deleted!`);
   };
-
   const toggleBill = (id) => setSelectedBills(selectedBills.includes(id) ? selectedBills.filter(x => x !== id) : [...selectedBills, id]);
   const togglePromo = (i) => setSelectedPromos(selectedPromos.includes(i) ? selectedPromos.filter(x => x !== i) : [...selectedPromos, i]);
   const toggleMenuItem = (id) => setSelectedMenuItems(selectedMenuItems.includes(id) ? selectedMenuItems.filter(x => x !== id) : [...selectedMenuItems, id]);
   const selectAllBills = () => setSelectedBills(selectedBills.length === todayOrders.length ? [] : todayOrders.map(o => o.id));
   const selectAllPromos = () => setSelectedPromos(selectedPromos.length === promoCodes.length ? [] : promoCodes.map((_, i) => i));
   const selectAllMenu = () => setSelectedMenuItems(selectedMenuItems.length === menuItems.length ? [] : menuItems.map(m => m.id));
-
   const downloadSelectedBills = () => { const selected = todayOrders.filter(o => selectedBills.includes(o.id)); if (selected.length === 0) { alert('Select bills'); return; } downloadCSV(selected, `kaapfi-selected.csv`); };
   const downloadByDateRange = () => {
     const start = new Date(csvStartDate); const end = new Date(csvEndDate); end.setHours(23, 59, 59);
@@ -581,16 +528,15 @@ export default function CafePOS() {
   };
   const downloadSingleBill = (order) => downloadCSV([order], `kaapfi-bill-${order.id}.csv`);
   const downloadTodayAll = () => { if (todayOrders.length === 0) { alert('No orders today'); return; } downloadCSV(todayOrders, `kaapfi-today.csv`); };
-
   const printBill = () => {
     if (currentOrder.length === 0) { alert('No items'); return; }
     const now = new Date();
     const billNo = `K90-${now.getFullYear().toString().slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(todayOrders.length + 1).padStart(3,'0')}`;
-    const itemsHTML = currentOrder.map(i => 
+    const itemsHTML = currentOrder.map(i =>
       `<tr><td style="padding:4px 0;">${i.quantity}</td><td style="padding:4px 0;">${i.name}</td><td style="padding:4px 0;text-align:right;">${i.price}</td><td style="padding:4px 0;text-align:right;">${i.price * i.quantity}</td></tr>`
     ).join('');
     const totalItems = currentOrder.reduce((sum, i) => sum + i.quantity, 0);
-    
+
     const receiptHTML = `
 <!DOCTYPE html>
 <html>
@@ -633,6 +579,7 @@ export default function CafePOS() {
     <div class="info-row"><span>Bill No:</span><span>${billNo}</span></div>
     <div class="info-row"><span>Date:</span><span>${now.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})}</span></div>
     <div class="info-row"><span>Time:</span><span>${now.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true})}</span></div>
+    ${selectedTable ? `<div class="info-row"><span>Table:</span><span>${selectedTable === 'Takeaway' ? 'Takeaway' : `Table ${selectedTable}`}</span></div>` : ''}
     ${customerName ? `<div class="info-row"><span>Customer:</span><span>${customerName}</span></div>` : ''}
     ${customerPhone ? `<div class="info-row"><span>Phone:</span><span>${customerPhone}</span></div>` : ''}
   </div>
@@ -668,19 +615,16 @@ export default function CafePOS() {
     win.document.write(receiptHTML);
     win.document.close();
   };
-
   const sendWhatsApp = () => {
     if (currentOrder.length === 0) { alert('No items'); return; }
     const text = `*${settings.cafeName}*\n\n*Order:*\n${currentOrder.map(i => `• ${i.name} x${i.quantity} - ₹${i.price * i.quantity}`).join('\n')}\n\n*Total:* ₹${total.toFixed(0)}`;
     window.open(`https://wa.me/${customerPhone ? '91' + customerPhone : ''}?text=${encodeURIComponent(text)}`, '_blank');
   };
-
   const sharePromoWhatsApp = (promo) => {
     const text = `🎁 *${settings.cafeName}*\n\nPromo Code: *${promo.code}*\n\n${promo.discountType === 'flat' ? '₹' : ''}${promo.discountValue}${promo.discountType === 'percent' ? '%' : ''} OFF\n\nValid: ${new Date(promo.activationDate).toLocaleDateString()} - ${new Date(promo.expiryDate).toLocaleDateString()}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
   const copyPromoCode = (code) => { navigator.clipboard.writeText(code); alert(`✅ Copied: ${code}`); };
-
   const addMenuItem = async () => {
     if (!newItem.name || !newItem.price) { alert('Fill fields'); return; }
     const id = Math.max(...menuItems.map(m => m.id), 0) + 1;
@@ -688,19 +632,17 @@ export default function CafePOS() {
     await saveMenuToCloud(updated);
     setNewItem({ name: '', price: '', category: 'Kaapfi Hot', emoji: '☕' });
   };
-  const updateMenuItem = async () => { 
+  const updateMenuItem = async () => {
     const updated = menuItems.map(m => m.id === editingItem.id ? editingItem : m);
     await saveMenuToCloud(updated);
     setEditingItem(null);
   };
-
   const resetMenuToDefault = async () => {
-    if (window.confirm('Reset menu to Kaapfi default?')) { 
-      await saveMenuToCloud(defaultMenu); 
-      alert('✅ Menu reset & synced!'); 
+    if (window.confirm('Reset menu to Kaapfi default?')) {
+      await saveMenuToCloud(defaultMenu);
+      alert('✅ Menu reset & synced!');
     }
   };
-
   const generatePromos = async () => {
     if (promoCount < 1) { alert('At least 1 code'); return; }
     const newCodes = [];
@@ -710,19 +652,17 @@ export default function CafePOS() {
     await savePromosToCloud([...promoCodes, ...newCodes]);
     alert(`✅ Generated ${promoCount} code${promoCount > 1 ? 's' : ''}!`);
   };
-
   const updateOrderStatus = async (orderId, status) => {
     const order = orders.find(o => o.id === orderId);
     if (order?.firebaseDocId) {
       try {
-        await updateDoc(doc(db, "orders", order.firebaseDocId), { 
-          status, 
-          ...(status === 'ready' ? { readyTime: Date.now() } : {}) 
+        await updateDoc(doc(db, "orders", order.firebaseDocId), {
+          status,
+          ...(status === 'ready' ? { readyTime: Date.now() } : {})
         });
       } catch (e) { console.error('Status update failed:', e); }
     }
   };
-
   // INVENTORY FUNCTIONS - ALL CLOUD SYNC
   const addInventoryItem = async () => {
     if (!newInventoryItem.name || !newInventoryItem.quantity) { alert('Fill name & quantity'); return; }
@@ -732,33 +672,28 @@ export default function CafePOS() {
     setNewInventoryItem({ name: '', quantity: '', unit: 'g', threshold: '' });
     alert('✅ Added & synced!');
   };
-
   const deleteInventoryItem = async (id) => {
     if (window.confirm('Delete this ingredient?')) {
       const updated = inventory.filter(i => i.id !== id);
       await saveInventoryToCloud(updated);
     }
   };
-
   const updateInventoryItem = async () => {
     if (!editingInventoryItem) return;
     const updated = inventory.map(i => i.id === editingInventoryItem.id ? editingInventoryItem : i);
     await saveInventoryToCloud(updated);
     setEditingInventoryItem(null);
   };
-
   const adjustInventoryQuantity = async (id, change) => {
     const updated = inventory.map(i => i.id === id ? { ...i, quantity: Math.max(0, i.quantity + change) } : i);
     await saveInventoryToCloud(updated);
   };
-
   const resetInventoryToDefault = async () => {
     if (window.confirm('⚠️ This will REPLACE all current inventory with default Kaapfi inventory.\n\nAll custom items and quantities will be lost. Continue?')) {
       await saveInventoryToCloud(defaultInventory);
       alert('✅ Inventory reset to Kaapfi defaults!\n\nAll 10 ingredients loaded:\n- Filter Coffee Powder 2000g\n- Milk 10000ml\n- Paneer 5000g\n- And 7 more...');
     }
   };
-
   const quickAddCommonItems = async () => {
     if (window.confirm('Add common Kaapfi ingredients to inventory?\n\nWill add these (if not already there):\n• Filter Coffee Powder\n• Milk\n• Paneer\n• Gravy Base\n• Paratha\n• Cold Brew Concentrate\n• Ice\n• Idli Batter\n• Chicken\n• Onion')) {
       const existingNames = inventory.map(i => i.name.toLowerCase());
@@ -770,13 +705,11 @@ export default function CafePOS() {
       alert(`✅ Added ${newItems.length} new items!`);
     }
   };
-
   // SOP FUNCTIONS - ALL CLOUD SYNC
   const openSOPEditor = (itemName) => {
     setEditingSOP(itemName);
     setSopEditing(menuSOPs[itemName] ? [...menuSOPs[itemName]] : []);
   };
-
   const saveSOP = async () => {
     const filtered = sopEditing.filter(s => s.ingredient && s.quantity > 0);
     const updated = { ...menuSOPs, [editingSOP]: filtered };
@@ -785,7 +718,6 @@ export default function CafePOS() {
     setSopEditing([]);
     alert('✅ SOP saved & synced!');
   };
-
   const addSOPRow = () => setSopEditing([...sopEditing, { ingredient: '', quantity: 0 }]);
   const removeSOPRow = (index) => setSopEditing(sopEditing.filter((_, i) => i !== index));
   const updateSOPRow = (index, field, value) => {
@@ -793,38 +725,34 @@ export default function CafePOS() {
     updated[index] = { ...updated[index], [field]: field === 'quantity' ? parseFloat(value) || 0 : value };
     setSopEditing(updated);
   };
-
   // EXPENSES - CLOUD SYNC
   const addExpense = async () => {
     if (!newExpense.description || !newExpense.amount) { alert('Fill fields'); return; }
     const now = new Date();
-    const newExp = { 
-      ...newExpense, 
-      id: Date.now(), 
-      amount: parseFloat(newExpense.amount), 
+    const newExp = {
+      ...newExpense,
+      id: Date.now(),
+      amount: parseFloat(newExpense.amount),
       date: now.toISOString().split('T')[0],
       displayDate: now.toLocaleDateString(),
-      time: now.toLocaleTimeString(), 
-      timestamp: now.toISOString() 
+      time: now.toLocaleTimeString(),
+      timestamp: now.toISOString()
     };
     await saveExpensesToCloud([...expenses, newExp]);
     setNewExpense({ description: '', amount: '', category: 'General', paidBy: 'cash' });
     alert('✅ Added & synced!');
   };
-
-  const deleteExpense = async (id) => { 
+  const deleteExpense = async (id) => {
     if (window.confirm('Delete expense?')) {
       const updated = expenses.filter(e => e.id !== id);
       await saveExpensesToCloud(updated);
     }
   };
-
   // SETTINGS - CLOUD SYNC
   const updateSettings = async (newSettings) => {
     setSettings(newSettings);
     await saveSettingsToCloud(newSettings);
   };
-
   const getRemainingServings = (itemName) => {
     const sop = menuSOPs[itemName] || [];
     if (sop.length === 0) return Infinity;
@@ -835,21 +763,20 @@ export default function CafePOS() {
     });
     return Math.min(...possibleServings);
   };
-
   const categories = ['All', ...new Set(menuItems.map(item => item.category))];
   const filteredItems = selectedCategory === 'All' ? menuItems : menuItems.filter(item => item.category === selectedCategory);
-  
+
   // Use ISO date for consistent comparison across devices
   const getISODate = (dateInput) => {
     if (!dateInput) return '';
     try {
-      const d = typeof dateInput === 'string' && dateInput.includes('/') 
+      const d = typeof dateInput === 'string' && dateInput.includes('/')
         ? new Date(dateInput.split('/').reverse().join('-'))
         : new Date(dateInput);
       return d.toISOString().split('T')[0];
     } catch (e) { return ''; }
   };
-  
+
   const todayISO = new Date().toISOString().split('T')[0];
   const todayOrders = orders.filter(o => {
     // Try multiple date sources
@@ -858,7 +785,6 @@ export default function CafePOS() {
   });
   const todayRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
   const aiRec = customerOrders.length > 0 ? getAIRecommendation(customerOrders, menuItems) : null;
-
   const selectedDateOrders = orders.filter(o => {
     const orderDateISO = getISODate(o.timestamp) || getISODate(o.date);
     return orderDateISO === summaryDate;
@@ -876,7 +802,6 @@ export default function CafePOS() {
   const totalExpenses = selectedDateExpenses.reduce((s, e) => s + e.amount, 0);
   const netCashInHand = cashReceived - cashExpenses;
   const netProfit = totalReceived - totalExpenses;
-
   if (!isLoggedIn) {
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
@@ -887,12 +812,11 @@ export default function CafePOS() {
           <input type="password" placeholder="Enter Password" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '14px', fontSize: '16px', border: '2px solid #e0e0e0', borderRadius: '8px', marginBottom: '16px', boxSizing: 'border-box' }} />
           {loginError && <div style={{ color: '#E64A19', fontSize: '14px', marginBottom: '16px' }}>{loginError}</div>}
           <button onClick={handleLogin} style={{ width: '100%', padding: '14px', fontSize: '16px', fontWeight: '700', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>LOGIN →</button>
-          <p style={{ marginTop: '24px', fontSize: '12px', color: '#000' }}>🔒 Kaapfi POS v5.0 • Mega Update</p>
+          <p style={{ marginTop: '24px', fontSize: '12px', color: '#000' }}>🔒 Kaapfi POS v5.1 • Tables + History</p>
         </div>
       </div>
     );
   }
-
   const DeleteModal = () => showDeletePassword && (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
       <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', minWidth: '320px' }}>
@@ -905,7 +829,6 @@ export default function CafePOS() {
       </div>
     </div>
   );
-
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5', fontFamily: 'system-ui, sans-serif' }}>
       <style>{`
@@ -949,7 +872,6 @@ export default function CafePOS() {
           </div>
         </div>
       </header>
-
       <nav style={{ background: '#fff', display: 'flex', borderBottom: '1px solid #eee', padding: '0 24px', overflowX: 'auto', gap: '8px' }}>
         {[
           { id: 'order', icon: '🛒', label: 'New Order' },
@@ -971,9 +893,7 @@ export default function CafePOS() {
           </button>
         ))}
       </nav>
-
       <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '24px' }}>
-
         {activeTab === 'order' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 420px', gap: '24px' }}>
             <div>
@@ -999,12 +919,58 @@ export default function CafePOS() {
                 })}
               </div>
             </div>
-
             <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', height: 'fit-content', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
               <h3 style={{ margin: '0 0 16px', fontSize: '18px', fontWeight: '700', color: '#000' }}>🛒 Current Order ({currentOrder.length})</h3>
-              <input type="tel" placeholder="Customer phone" value={customerPhone} onChange={(e) => handlePhoneChange(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '2px solid #FC8019', borderRadius: '8px', marginBottom: '10px', boxSizing: 'border-box' }} />
-              <input type="text" placeholder="Customer name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '1px solid #e0e0e0', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box' }} />
 
+              {/* TABLE SELECTION */}
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '12px', fontWeight: '800', color: '#000', display: 'block', marginBottom: '6px' }}>🪑 Select Table:</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '4px' }}>
+                  {[1, 2, 3, 4, 'Takeaway'].map(t => {
+                    const tableOrder = todayOrders.find(o => o.tableNumber === t && (o.status || 'in_progress') !== 'delivered');
+                    const isSelected = selectedTable === t;
+                    const hasActiveOrder = !!tableOrder;
+                    return (
+                      <button key={t} onClick={() => {
+                        setSelectedTable(isSelected ? null : t);
+                        if (!isSelected && tableOrder) {
+                          if (tableOrder.customerPhone) handlePhoneChange(tableOrder.customerPhone);
+                          if (tableOrder.customerName && !tableOrder.customerName.startsWith('Table')) setCustomerName(tableOrder.customerName);
+                        }
+                      }} style={{
+                        padding: '10px 4px',
+                        border: 'none',
+                        borderRadius: '6px',
+                        background: isSelected ? '#FC8019' : hasActiveOrder ? '#4CAF50' : '#f0f0f0',
+                        color: isSelected || hasActiveOrder ? '#fff' : '#000',
+                        fontWeight: '800',
+                        cursor: 'pointer',
+                        fontSize: t === 'Takeaway' ? '10px' : '13px'
+                      }}>
+                        {t === 'Takeaway' ? '📦 T/A' : `T${t}`}
+                        {hasActiveOrder && !isSelected && <div style={{ fontSize: '9px', marginTop: '2px' }}>₹{tableOrder.total?.toFixed(0)}</div>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedTable && (
+                  <div style={{ marginTop: '6px', padding: '6px 10px', background: '#fff3e0', borderRadius: '6px', fontSize: '11px', fontWeight: '700', color: '#E64A19' }}>
+                    ✓ Selected: {selectedTable === 'Takeaway' ? 'Takeaway' : `Table ${selectedTable}`}
+                  </div>
+                )}
+              </div>
+
+              {/* ADD-ON BILL BANNER */}
+              {customerData && customerOrders.length > 0 && (
+                <div style={{ background: '#fff3e0', padding: '10px', borderRadius: '8px', marginBottom: '10px', border: '2px solid #FC8019' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#E64A19', marginBottom: '4px' }}>⚡ ADD-ON BILL for {customerData.name || customerPhone}</div>
+                  <div style={{ fontSize: '11px', color: '#000', fontWeight: '600' }}>Last bill: ₹{customerOrders[0]?.total?.toFixed(0)} • {customerOrders[0]?.time}</div>
+                  <div style={{ fontSize: '11px', color: '#000', fontWeight: '600', marginTop: '2px' }}>Add new items below → Complete as Add-On</div>
+                </div>
+              )}
+
+              <input type="tel" placeholder="Customer phone (optional)" value={customerPhone} onChange={(e) => handlePhoneChange(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '2px solid #FC8019', borderRadius: '8px', marginBottom: '10px', boxSizing: 'border-box' }} />
+              <input type="text" placeholder="Customer name (optional)" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '1px solid #e0e0e0', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box' }} />
               {customerData && (
                 <>
                   <div style={{ background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', padding: '12px', borderRadius: '8px', marginBottom: '10px', color: '#fff' }}>
@@ -1033,7 +999,6 @@ export default function CafePOS() {
                   )}
                 </>
               )}
-
               <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '12px' }}>
                 {currentOrder.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '30px 20px', color: '#000' }}>
@@ -1059,7 +1024,6 @@ export default function CafePOS() {
                   ))
                 )}
               </div>
-
               {currentOrder.length > 0 && (
                 <>
                   <div style={{ marginBottom: '10px', padding: '10px', background: '#fff9e6', borderRadius: '8px' }}>
@@ -1098,7 +1062,6 @@ export default function CafePOS() {
             </div>
           </div>
         )}
-
         {activeTab === 'summary' && (
           <div>
             <div style={{ background: '#e3f2fd', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#0066cc' }}>
@@ -1172,7 +1135,6 @@ export default function CafePOS() {
             )}
           </div>
         )}
-
         {activeTab === 'expenses' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>💸 Expenses</h2>
@@ -1190,8 +1152,61 @@ export default function CafePOS() {
               <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', textAlign: 'center', color: '#000' }}><div style={{ fontSize: '48px' }}>💸</div><p>No expenses yet</p></div>
             ) : (
               <div>
+                {/* 40-Day Expense Book */}
+                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <h3 style={{ fontSize: '16px', margin: 0, color: '#000', fontWeight: '800' }}>📚 40-Day Expense Book</h3>
+                    <button onClick={() => {
+                      const start = Date.now() - 40 * 86400000;
+                      const filtered = expenses.filter(e => new Date(e.timestamp || e.date) >= start);
+                      const csv = 'Date,Time,Description,Category,Amount,Paid By\n' + filtered.map(e => `"${e.date}","${e.time}","${e.description}","${e.category}",${e.amount},"${e.paidBy}"`).join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+                      a.download = `kaapfi-expenses-40days.csv`; a.click();
+                    }} style={{ padding: '8px 16px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '12px' }}>📥 Download 40 Days</button>
+                  </div>
+
+                  <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                    {(() => {
+                      const dayMap = {};
+                      expenses.forEach(e => {
+                        const d = e.date || (e.timestamp ? new Date(e.timestamp).toISOString().split('T')[0] : null);
+                        if (!d) return;
+                        const daysAgo = Math.floor((Date.now() - new Date(d)) / 86400000);
+                        if (daysAgo > 40) return;
+                        if (!dayMap[d]) dayMap[d] = { total: 0, cash: 0, upi: 0, items: [] };
+                        dayMap[d].total += e.amount;
+                        if (e.paidBy === 'cash') dayMap[d].cash += e.amount;
+                        if (e.paidBy === 'upi') dayMap[d].upi += e.amount;
+                        dayMap[d].items.push(e);
+                      });
+                      const sorted = Object.entries(dayMap).sort((a, b) => new Date(b[0]) - new Date(a[0]));
+                      return sorted.length === 0 ? <p style={{ color: '#000', fontWeight: '600' }}>No expenses in last 40 days</p> : sorted.map(([date, data]) => (
+                        <div key={date} style={{ marginBottom: '12px', border: '1px solid #e0e0e0', borderRadius: '8px', overflow: 'hidden' }}>
+                          <div style={{ padding: '10px 14px', background: '#ffebee', display: 'flex', justifyContent: 'space-between' }}>
+                            <div style={{ fontSize: '14px', fontWeight: '800', color: '#000' }}>{new Date(date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontSize: '15px', fontWeight: '800', color: '#E64A19' }}>-₹{data.total.toFixed(0)}</div>
+                              <div style={{ fontSize: '10px', color: '#000', fontWeight: '600' }}>💵 ₹{data.cash.toFixed(0)} • 📱 ₹{data.upi.toFixed(0)}</div>
+                            </div>
+                          </div>
+                          {data.items.map((e, i) => (
+                            <div key={i} style={{ padding: '8px 14px', background: '#fff', borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between' }}>
+                              <div>
+                                <div style={{ fontSize: '12px', fontWeight: '700', color: '#000' }}>{e.description}</div>
+                                <div style={{ fontSize: '10px', color: '#000', fontWeight: '600' }}>{e.category} • {e.paidBy?.toUpperCase()} • {e.time}</div>
+                              </div>
+                              <div style={{ fontSize: '13px', fontWeight: '800', color: '#E64A19' }}>-₹{e.amount}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+
                 <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
-                  <div style={{ fontSize: '14px', color: '#000' }}>Total Expenses (All Time)</div>
+                  <div style={{ fontSize: '14px', color: '#000', fontWeight: '700' }}>Total Expenses (All Time)</div>
                   <div style={{ fontSize: '28px', fontWeight: '700', color: '#E64A19' }}>₹{expenses.reduce((s, e) => s + e.amount, 0).toFixed(0)}</div>
                 </div>
                 <div style={{ display: 'grid', gap: '8px' }}>
@@ -1212,7 +1227,6 @@ export default function CafePOS() {
             )}
           </div>
         )}
-
         {activeTab === 'inventory' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
@@ -1222,7 +1236,6 @@ export default function CafePOS() {
                 <button onClick={resetInventoryToDefault} style={{ padding: '10px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>🔄 Reset to Kaapfi Default</button>
               </div>
             </div>
-
             {inventory.length === 0 && (
               <div style={{ background: '#fff3e0', padding: '20px', borderRadius: '12px', marginBottom: '20px', textAlign: 'center' }}>
                 <div style={{ fontSize: '48px' }}>📦</div>
@@ -1231,7 +1244,6 @@ export default function CafePOS() {
                 <button onClick={quickAddCommonItems} style={{ padding: '12px 24px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>⚡ Load Default Inventory Now</button>
               </div>
             )}
-
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '700' }}>➕ Add Ingredient</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px', marginBottom: '10px' }}>
@@ -1289,7 +1301,6 @@ export default function CafePOS() {
             </div>
           </div>
         )}
-
         {activeTab === 'sops' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>📋 Recipe SOPs</h2>
@@ -1343,7 +1354,6 @@ export default function CafePOS() {
             )}
           </div>
         )}
-
         {activeTab === 'kitchen' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>👨‍🍳 Kitchen</h2>
@@ -1355,7 +1365,10 @@ export default function CafePOS() {
                 return (
                   <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: isLate ? '2px solid #E64A19' : '2px solid transparent' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
-                      <div style={{ fontWeight: '700', color: '#000' }}>#{order.id.toString().slice(-5)} • {order.customerName}</div>
+                      <div style={{ fontWeight: '800', color: '#000' }}>
+                        {order.tableNumber && <span style={{ background: '#FC8019', color: '#fff', padding: '2px 10px', borderRadius: '10px', marginRight: '8px', fontSize: '14px' }}>🪑 {order.tableNumber === 'Takeaway' ? 'T/A' : `T${order.tableNumber}`}</span>}
+                        #{order.id.toString().slice(-5)} • {order.customerName}
+                      </div>
                       <div style={{ background: isLate ? '#E64A19' : '#4CAF50', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>⏱️ {elapsed} min</div>
                     </div>
                     {order.items.map(item => {
@@ -1388,7 +1401,6 @@ export default function CafePOS() {
             </div>
           </div>
         )}
-
         {activeTab === 'bills' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>🧾 Today's Orders</h2>
@@ -1416,7 +1428,10 @@ export default function CafePOS() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap' }}>
                         <div>
                           <div style={{ fontWeight: '700', color: '#000' }}>#{order.id.toString().slice(-5)}</div>
-                          <div style={{ fontSize: '12px', color: '#000' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
+                          <div style={{ fontSize: '12px', color: '#000', fontWeight: '600' }}>
+                            {order.tableNumber && <span style={{ background: '#FC8019', color: '#fff', padding: '2px 8px', borderRadius: '10px', marginRight: '6px', fontWeight: '800' }}>🪑 {order.tableNumber === 'Takeaway' ? 'T/A' : `T${order.tableNumber}`}</span>}
+                            {order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}
+                          </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019' }}>₹{order.total?.toFixed(0)}</div>
@@ -1432,12 +1447,65 @@ export default function CafePOS() {
             )}
           </div>
         )}
-
         {activeTab === 'reports' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>📊 Reports</h2>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>📊 Reports & History</h2>
+
+            {/* Quick Download Buttons */}
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '700' }}>📥 Date Range</h3>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>⚡ Quick Download</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+                {[
+                  { label: '📥 Today', days: 0 },
+                  { label: '📥 7 Days', days: 7 },
+                  { label: '📥 15 Days', days: 15 },
+                  { label: '📥 30 Days', days: 30 },
+                ].map(({ label, days }) => (
+                  <button key={days} onClick={() => {
+                    const start = days === 0 ? new Date().setHours(0,0,0,0) : Date.now() - days * 86400000;
+                    const filtered = orders.filter(o => new Date(o.timestamp) >= start);
+                    if (filtered.length === 0) { alert('No orders in this period'); return; }
+                    downloadCSV(filtered, `kaapfi-${days === 0 ? 'today' : days + 'days'}-${new Date().toISOString().split('T')[0]}.csv`);
+                  }} style={{ padding: '12px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>{label}</button>
+                ))}
+              </div>
+
+              {/* Daily Breakdown */}
+              <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <h3 style={{ fontSize: '14px', margin: '12px 0 8px', color: '#000', fontWeight: '800' }}>📅 Last 30 Days - Daily Breakdown</h3>
+                {(() => {
+                  const dayMap = {};
+                  orders.forEach(o => {
+                    const d = o.timestamp ? new Date(o.timestamp).toISOString().split('T')[0] : o.date;
+                    if (!d) return;
+                    const daysAgo = Math.floor((Date.now() - new Date(d)) / 86400000);
+                    if (daysAgo > 30) return;
+                    if (!dayMap[d]) dayMap[d] = { orders: 0, revenue: 0, cash: 0, upi: 0, card: 0 };
+                    dayMap[d].orders++;
+                    dayMap[d].revenue += o.total || 0;
+                    if (o.paymentMethod === 'cash') dayMap[d].cash += o.total || 0;
+                    if (o.paymentMethod === 'upi') dayMap[d].upi += o.total || 0;
+                    if (o.paymentMethod === 'card') dayMap[d].card += o.total || 0;
+                  });
+                  const sorted = Object.entries(dayMap).sort((a, b) => new Date(b[0]) - new Date(a[0]));
+                  return sorted.length === 0 ? <p style={{ color: '#000', fontWeight: '600' }}>No data yet</p> : sorted.map(([date, data]) => (
+                    <div key={date} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '8px', marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: '800', color: '#000' }}>{new Date(date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</div>
+                        <div style={{ fontSize: '11px', color: '#000', fontWeight: '600' }}>💵 ₹{data.cash.toFixed(0)} • 📱 ₹{data.upi.toFixed(0)} • 💳 ₹{data.card.toFixed(0)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '16px', fontWeight: '800', color: '#FC8019' }}>₹{data.revenue.toFixed(0)}</div>
+                        <div style={{ fontSize: '11px', color: '#000', fontWeight: '600' }}>{data.orders} orders</div>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '700' }}>📥 Custom Date Range</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
                 <div><label style={{ fontSize: '11px', color: '#000' }}>From</label><input type="date" value={csvStartDate} onChange={(e) => setCsvStartDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
                 <div><label style={{ fontSize: '11px', color: '#000' }}>To</label><input type="date" value={csvEndDate} onChange={(e) => setCsvEndDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
@@ -1453,7 +1521,6 @@ export default function CafePOS() {
             </div>
           </div>
         )}
-
         {activeTab === 'menu' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
@@ -1511,7 +1578,6 @@ export default function CafePOS() {
             </div>
           </div>
         )}
-
         {activeTab === 'promos' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>🎁 Promos</h2>
@@ -1569,7 +1635,6 @@ export default function CafePOS() {
             </div>
           </div>
         )}
-
         {activeTab === 'customers' && (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>👥 Customers</h2>
@@ -1608,7 +1673,6 @@ export default function CafePOS() {
             )}
           </div>
         )}
-
         {/* MARKETING TAB - Password Protected */}
         {activeTab === 'marketing' && (
           <div>
@@ -1626,7 +1690,6 @@ export default function CafePOS() {
                   <h2 style={{ fontSize: '24px', margin: 0, color: '#000', fontWeight: '800' }}>🎯 Marketing & Analytics</h2>
                   <button onClick={() => { setMarketingUnlocked(false); }} style={{ padding: '8px 16px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>🔒 Lock</button>
                 </div>
-
                 {/* Top Stats */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
                   <div style={{ background: 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)', padding: '16px', borderRadius: '12px', color: '#fff' }}>
@@ -1647,7 +1710,6 @@ export default function CafePOS() {
                     <div style={{ fontSize: '28px', fontWeight: '800' }}>{orders.reduce((s, o) => s + (o.items || []).reduce((a, i) => a + i.quantity, 0), 0)}</div>
                   </div>
                 </div>
-
                 {/* Top Selling Items */}
                 <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>🏆 Top Selling Items</h3>
@@ -1677,7 +1739,6 @@ export default function CafePOS() {
                     );
                   })()}
                 </div>
-
                 {/* Hourly Pattern */}
                 <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>⏰ Best Hours (When Customers Order)</h3>
@@ -1706,7 +1767,6 @@ export default function CafePOS() {
                     );
                   })()}
                 </div>
-
                 {/* Day of Week Pattern */}
                 <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>📅 Best Days of Week</h3>
@@ -1737,7 +1797,6 @@ export default function CafePOS() {
                     );
                   })()}
                 </div>
-
                 {/* Customer Segments */}
                 <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>👥 Customer Segments</h3>
@@ -1765,7 +1824,6 @@ export default function CafePOS() {
                     );
                   })()}
                 </div>
-
                 {/* Customer Insights - Predictive */}
                 <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
                   <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>🔮 Customer Insights & Marketing Opportunities</h3>
@@ -1775,21 +1833,21 @@ export default function CafePOS() {
                       if (!c.phone) return;
                       const custOrders = orders.filter(o => o.customerPhone === c.phone);
                       if (custOrders.length < 2) return;
-                      
+
                       // Favorite item
                       const itemCounts = {};
                       custOrders.forEach(o => (o.items || []).forEach(i => {
                         itemCounts[i.name] = (itemCounts[i.name] || 0) + i.quantity;
                       }));
                       const favItem = Object.entries(itemCounts).sort((a, b) => b[1] - a[1])[0];
-                      
+
                       // Favorite hour
                       const hours = custOrders.map(o => { try { return new Date(o.timestamp).getHours(); } catch (e) { return null; } }).filter(h => h !== null);
                       const hourMode = hours.length > 0 ? hours.sort((a,b) => hours.filter(v => v===a).length - hours.filter(v => v===b).length).pop() : null;
-                      
+
                       // Days since last order
                       const daysSince = c.lastOrder ? Math.floor((Date.now() - new Date(c.lastOrder)) / 86400000) : 0;
-                      
+
                       if (favItem && hourMode !== null) {
                         customerPatterns.push({
                           name: c.name || 'Customer',
@@ -1801,7 +1859,7 @@ export default function CafePOS() {
                         });
                       }
                     });
-                    
+
                     return customerPatterns.length === 0 ? <p style={{ color: '#000' }}>Need more order data</p> : (
                       <div style={{ display: 'grid', gap: '8px' }}>
                         {customerPatterns.map(p => {
@@ -1827,7 +1885,6 @@ export default function CafePOS() {
                     );
                   })()}
                 </div>
-
                 {/* Backup - Email CSV */}
                 <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
                   <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>📧 Backup & Export</h3>
@@ -1857,7 +1914,6 @@ export default function CafePOS() {
             )}
           </div>
         )}
-
         {activeTab === 'settings' && (
           <div style={{ maxWidth: '700px' }}>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>⚙️ Settings</h2>
@@ -1883,10 +1939,9 @@ export default function CafePOS() {
           </div>
         )}
       </div>
-
       <footer style={{ background: '#fff', borderTop: '1px solid #eee', padding: '20px 24px', marginTop: '40px', textAlign: 'center', color: '#000', fontSize: '13px' }}>
         <div>{settings.cafeName} • {settings.address}</div>
-        <div style={{ fontSize: '11px', marginTop: '4px' }}>v5.0 • Marketing + Analytics ☁️</div>
+        <div style={{ fontSize: '11px', marginTop: '4px' }}>v5.1 • Tables + History + Expense Book ☁️</div>
       </footer>
     </div>
   );
