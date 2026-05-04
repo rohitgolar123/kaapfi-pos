@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StudioVidha — Admin Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#09090B;--bg2:#111116;--card:#16161C;--card2:#1E1E26;
+    --border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.12);
+    --orange:#FF5E00;--orangebg:rgba(255,94,0,.1);--orangeborder:rgba(255,94,0,.25);
+    --white:#fff;--w70:rgba(255,255,255,.7);--w50:rgba(255,255,255,.5);--w30:rgba(255,255,255,.3);
+  }
+  body{font-family:'Poppins',sans-serif;background:var(--bg);color:var(--white);min-height:100vh}
+
+  /* TOPBAR */
+  .topbar{background:#000;border-bottom:1px solid var(--border);padding:.875rem 2rem;display:flex;align-items:center;justify-content:space-between}
+  .logo{display:flex;align-items:center;gap:.625rem}
+  .logo-sq{width:34px;height:34px;background:var(--orange);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#000;font-weight:900;font-size:1rem}
+  .logo-name{font-weight:800;font-size:1rem}
+  .admin-tag{font-size:.7rem;font-weight:700;padding:.25rem .625rem;background:var(--orangebg);border:1px solid var(--orangeborder);border-radius:20px;color:var(--orange)}
+
+  /* LAYOUT */
+  .wrap{max-width:1100px;margin:0 auto;padding:2.5rem 1.5rem}
+  .page-title{font-size:1.75rem;font-weight:800;margin-bottom:.375rem}
+  .page-sub{font-size:.875rem;color:var(--w50);margin-bottom:2rem}
+
+  /* UPLOAD CARD */
+  .upload-card{background:var(--card);border:1px solid var(--border2);border-radius:18px;padding:2rem;margin-bottom:2.5rem}
+  .section-label{font-size:.75rem;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.12em;margin-bottom:1.25rem}
+
+  .drop-zone{border:2px dashed var(--border2);border-radius:14px;padding:2.5rem 1rem;text-align:center;cursor:pointer;transition:all .25s;background:rgba(255,255,255,.02);margin-bottom:1.5rem}
+  .drop-zone:hover,.drop-zone.drag-over{border-color:var(--orange);background:var(--orangebg)}
+  .drop-ico{font-size:2.5rem;margin-bottom:.75rem}
+  .drop-txt{font-size:.9rem;color:var(--w70);font-weight:600}
+  .drop-hint{font-size:.75rem;color:var(--w30);margin-top:.375rem}
+  #fileInput{display:none}
+
+  /* PREVIEW */
+  #preview-wrap{display:none;margin-bottom:1.5rem;text-align:center}
+  #preview-img{max-height:220px;border-radius:12px;border:1px solid var(--border2)}
+
+  /* FORM FIELDS */
+  .form-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem;margin-bottom:1.25rem}
+  @media(max-width:640px){.form-row{grid-template-columns:1fr}}
+  .field{display:flex;flex-direction:column;gap:.375rem}
+  .field label{font-size:.75rem;font-weight:600;color:var(--w70)}
+  .field select,.field input{background:rgba(255,255,255,.05);border:1px solid var(--border2);border-radius:10px;padding:.65rem 1rem;color:#fff;font-family:'Poppins',sans-serif;font-size:.875rem;outline:none;transition:border-color .2s}
+  .field select:focus,.field input:focus{border-color:var(--orange)}
+  .field select option{background:#1E1E26}
+
+  .upload-btn{width:100%;padding:.875rem;background:var(--orange);color:#000;border:none;border-radius:10px;font-family:'Poppins',sans-serif;font-size:.9rem;font-weight:800;cursor:pointer;transition:all .25s;display:flex;align-items:center;justify-content:center;gap:.5rem}
+  .upload-btn:hover{background:#FF7A2E;transform:translateY(-1px)}
+  .upload-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+  /* PROGRESS */
+  #progress-wrap{display:none;margin-top:1rem}
+  .progress-bar{height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}
+  .progress-fill{height:100%;width:0%;background:var(--orange);border-radius:99px;transition:width .3s}
+  .progress-txt{font-size:.75rem;color:var(--w50);margin-top:.5rem;text-align:center}
+
+  /* TOAST */
+  .toast{position:fixed;top:1.25rem;right:1.25rem;padding:.75rem 1.25rem;border-radius:12px;font-size:.85rem;font-weight:600;z-index:999;transform:translateX(200%);transition:transform .3s;max-width:300px}
+  .toast.success{background:#1a2e1a;border:1px solid #2e5c2e;color:#4ade80}
+  .toast.error{background:#2e1a1a;border:1px solid #5c2e2e;color:#f87171}
+  .toast.show{transform:translateX(0)}
+
+  /* STATS BAR */
+  .stats-bar{display:flex;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+  .stat-pill{padding:.5rem 1.25rem;background:var(--card);border:1px solid var(--border);border-radius:99px;font-size:.8rem;color:var(--w70)}
+  .stat-pill strong{color:var(--white);font-weight:700}
+
+  /* GALLERY */
+  .gallery-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:gap;gap:.75rem}
+  .gallery-title{font-size:1.1rem;font-weight:700}
+  .filter-group{display:flex;gap:.5rem;flex-wrap:wrap}
+  .filter-btn{padding:.35rem .875rem;border-radius:99px;border:1px solid var(--border2);background:none;color:var(--w70);font-family:'Poppins',sans-serif;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .2s}
+  .filter-btn:hover,.filter-btn.active{background:var(--orange);border-color:var(--orange);color:#000}
+
+  .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem}
+  .photo-card{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;transition:all .25s;position:relative}
+  .photo-card:hover{border-color:var(--orange);transform:translateY(-3px)}
+  .photo-img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+  .photo-info{padding:.875rem 1rem}
+  .photo-cat{font-size:.65rem;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:.12em;margin-bottom:.25rem}
+  .photo-title{font-size:.875rem;font-weight:700;color:#fff;margin-bottom:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .photo-loc{font-size:.73rem;color:var(--w50)}
+  .photo-actions{display:flex;gap:.5rem;padding:.625rem 1rem;border-top:1px solid var(--border)}
+  .del-btn{flex:1;padding:.45rem;border-radius:8px;border:1px solid rgba(239,68,68,.3);background:rgba(239,68,68,.08);color:#f87171;font-family:'Poppins',sans-serif;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .2s}
+  .del-btn:hover{background:rgba(239,68,68,.2);border-color:#f87171}
+
+  .empty-state{text-align:center;padding:4rem 2rem;color:var(--w30)}
+  .empty-ico{font-size:3rem;margin-bottom:1rem}
+  .empty-txt{font-size:.9rem}
+
+  .skeleton{animation:shimmer 1.5s infinite linear;background:linear-gradient(90deg,var(--card) 0%,var(--card2) 50%,var(--card) 100%);background-size:200% 100%}
+  @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-sq">S</div>
+    <div class="logo-name">StudioVidha</div>
+  </div>
+  <div class="admin-tag">Admin Portal</div>
+</div>
+
+<div class="wrap">
+  <h1 class="page-title">Photo Manager</h1>
+  <p class="page-sub">Upload and manage your project photos. They appear live on the website gallery.</p>
+
+  <!-- UPLOAD CARD -->
+  <div class="upload-card">
+    <div class="section-label">Upload New Photo</div>
+
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="drop-ico">📸</div>
+      <div class="drop-txt">Click to choose or drag & drop</div>
+      <div class="drop-hint">JPG, PNG, WEBP — max 15MB</div>
+    </div>
+    <input type="file" id="fileInput" accept="image/*">
+
+    <div id="preview-wrap">
+      <img id="preview-img" src="" alt="Preview">
+    </div>
+
+    <div class="form-row">
+      <div class="field">
+        <label>Category</label>
+        <select id="category">
+          <option>Residential Interior</option>
+          <option>Commercial Interior</option>
+          <option>Restaurant Design</option>
+          <option>Office Design</option>
+          <option>Bedroom</option>
+          <option>Living Room</option>
+          <option>Kitchen</option>
+          <option>Bathroom</option>
+          <option>Exterior</option>
+          <option>Modular Furniture</option>
+          <option>False Ceiling</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Project Title</label>
+        <input type="text" id="title" placeholder="e.g. Villa Interior, Manish Nagar">
+      </div>
+      <div class="field">
+        <label>Location</label>
+        <input type="text" id="location" placeholder="e.g. Dharampeth, Nagpur">
+      </div>
+    </div>
+
+    <button class="upload-btn" id="uploadBtn" disabled onclick="uploadPhoto()">
+      <span id="upload-btn-txt">📤 Select a photo first</span>
+    </button>
+
+    <div id="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-txt" id="progressTxt">Uploading…</div>
+    </div>
+  </div>
+
+  <!-- GALLERY -->
+  <div class="stats-bar">
+    <div class="stat-pill">Total photos: <strong id="total-count">—</strong></div>
+    <div class="stat-pill">Categories: <strong id="cat-count">—</strong></div>
+  </div>
+
+  <div class="gallery-header">
+    <div class="gallery-title">Uploaded Photos</div>
+    <div class="filter-group" id="filter-group">
+      <button class="filter-btn active" onclick="filterPhotos('all', this)">All</button>
+    </div>
+  </div>
+
+  <div class="photo-grid" id="photoGrid">
+    <div class="empty-state">
+      <div class="empty-ico">🔄</div>
+      <div class="empty-txt">Loading photos…</div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+let allPhotos = [];
+let selectedFile = null;
+
+// --- FILE SELECT ---
+const fileInput = document.getElementById('fileInput');
+const dropZone  = document.getElementById('dropZone');
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) handleFile(file);
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+function handleFile(file) {
+  if (!file.type.startsWith('image/')) return showToast('Only image files allowed', 'error');
+  if (file.size > 15 * 1024 * 1024) return showToast('File too large (max 15MB)', 'error');
+  selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('preview-img').src = e.target.result;
+    document.getElementById('preview-wrap').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+  document.getElementById('uploadBtn').disabled = false;
+  document.getElementById('upload-btn-txt').textContent = '📤 Upload Photo';
+}
+
+// --- UPLOAD ---
+async function uploadPhoto() {
+  if (!selectedFile) return;
+  const btn   = document.getElementById('uploadBtn');
+  const pWrap = document.getElementById('progress-wrap');
+  const pFill = document.getElementById('progressFill');
+  const pTxt  = document.getElementById('progressTxt');
+
+  btn.disabled = true;
+  pWrap.style.display = 'block';
+
+  const fd = new FormData();
+  fd.append('photo',    selectedFile);
+  fd.append('category', document.getElementById('category').value);
+  fd.append('title',    document.getElementById('title').value || 'Untitled Project');
+  fd.append('location', document.getElementById('location').value || 'Nagpur');
+
+  const xhr = new XMLHttpRequest();
+  xhr.upload.addEventListener('progress', e => {
+    if (e.lengthComputable) {
+      const pct = Math.round(e.loaded / e.total * 100);
+      pFill.style.width = pct + '%';
+      pTxt.textContent  = `Uploading… ${pct}%`;
+    }
+  });
+  xhr.addEventListener('load', () => {
+    if (xhr.status === 200) {
+      showToast('Photo uploaded!', 'success');
+      resetForm();
+      loadPhotos();
+    } else {
+      showToast('Upload failed. Try again.', 'error');
+    }
+    btn.disabled      = false;
+    pWrap.style.display = 'none';
+    pFill.style.width = '0%';
+  });
+  xhr.addEventListener('error', () => {
+    showToast('Network error', 'error');
+    btn.disabled = false;
+    pWrap.style.display = 'none';
+  });
+  xhr.open('POST', '/api/upload');
+  xhr.send(fd);
+}
+
+function resetForm() {
+  selectedFile = null;
+  fileInput.value = '';
+  document.getElementById('preview-wrap').style.display = 'none';
+  document.getElementById('preview-img').src = '';
+  document.getElementById('title').value    = '';
+  document.getElementById('location').value = '';
+  document.getElementById('uploadBtn').disabled = true;
+  document.getElementById('upload-btn-txt').textContent = '📤 Select a photo first';
+}
+
+// --- LOAD & RENDER ---
+async function loadPhotos() {
+  const res   = await fetch('/api/photos');
+  allPhotos   = await res.json();
+  updateStats();
+  buildFilters();
+  renderGrid(allPhotos);
+}
+
+function updateStats() {
+  document.getElementById('total-count').textContent = allPhotos.length;
+  const cats = new Set(allPhotos.map(p => p.category));
+  document.getElementById('cat-count').textContent   = cats.size;
+}
+
+function buildFilters() {
+  const cats  = ['all', ...new Set(allPhotos.map(p => p.category))];
+  const group = document.getElementById('filter-group');
+  group.innerHTML = cats.map(c =>
+    `<button class="filter-btn${c==='all'?' active':''}" onclick="filterPhotos('${c}',this)">${c==='all'?'All':c}</button>`
+  ).join('');
+}
+
+function filterPhotos(cat, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderGrid(cat === 'all' ? allPhotos : allPhotos.filter(p => p.category === cat));
+}
+
+function renderGrid(photos) {
+  const grid = document.getElementById('photoGrid');
+  if (!photos.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-ico">🖼️</div><div class="empty-txt">No photos yet. Upload your first project photo above.</div></div>`;
+    return;
+  }
+  grid.innerHTML = photos.map(p => `
+    <div class="photo-card" id="card-${p.id}">
+      <img class="photo-img" src="${p.url}" alt="${p.title}" loading="lazy">
+      <div class="photo-info">
+        <div class="photo-cat">${p.category}</div>
+        <div class="photo-title">${p.title}</div>
+        <div class="photo-loc">📍 ${p.location}</div>
+      </div>
+      <div class="photo-actions">
+        <button class="del-btn" onclick="deletePhoto('${p.id}')">🗑 Delete</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+// --- DELETE ---
+async function deletePhoto(id) {
+  if (!confirm('Delete this photo from the website?')) return;
+  const res = await fetch('/api/photos/' + id, { method: 'DELETE' });
+  if (res.ok) {
+    showToast('Photo deleted', 'success');
+    document.getElementById('card-' + id)?.remove();
+    allPhotos = allPhotos.filter(p => p.id !== id);
+    updateStats();
+    buildFilters();
+    if (!document.querySelector('.photo-card')) renderGrid([]);
+  } else {
+    showToast('Delete failed', 'error');
+  }
+}
+
+// --- TOAST ---
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = `toast ${type} show`;
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+loadPhotos();
+</script>
+</body>
+</html>

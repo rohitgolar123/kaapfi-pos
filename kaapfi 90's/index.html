@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline';
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'self' https://script.google.com https://script.googleusercontent.com https://*.googleusercontent.com;
+  frame-ancestors 'none';
+  base-uri 'self';
+  form-action 'none';
+">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex, nofollow">
+
+<title>Kaapfi 90's — Billing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,700;1,9..144,500&family=IM+Fell+English:ital@0;1&family=IM+Fell+DW+Pica:ital@0;1&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f4ede2;
+    --paper-deep: #ebe0cc;
+    --ink: #2a1d14;
+    --ink-soft: #5a4635;
+    --ink-muted: #8a7660;
+    --espresso: #3d2817;
+    --crema: #c8a57a;
+    --terracotta: #c2532a;
+    --sage: #6b8e5a;
+    --amber: #d89b2e;
+    --red: #c2392a;
+    --rule: rgba(42, 29, 20, 0.12);
+    --shadow: 0 1px 2px rgba(42,29,20,0.04), 0 8px 32px rgba(42,29,20,0.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 440px;
+    min-height: 100vh;
+  }
+  @media (max-width: 900px) { .app { grid-template-columns: 1fr; } }
+
+  /* Menu panel */
+  .menu-panel {
+    padding: 24px 28px 80px;
+    overflow-y: auto;
+    border-right: 1px solid var(--rule);
+  }
+  .brand-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 16px; border-bottom: 1px solid var(--rule); margin-bottom: 20px;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .brand {
+    font-family: 'IM Fell English', 'Fraunces', serif;
+    font-weight: 400; font-size: 28px;
+    color: var(--espresso); letter-spacing: 0;
+  }
+  .brand span { color: var(--terracotta); font-style: italic; font-weight: 400; }
+  .brand-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; color: var(--ink-soft); letter-spacing: 0.15em; text-transform: uppercase;
+  }
+
+  /* Sync status pill */
+  .sync-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .sync-pill .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .sync-pill.online { background: rgba(107, 142, 90, 0.15); color: var(--sage); }
+  .sync-pill.online .dot { background: var(--sage); animation: pulse 2s infinite; }
+  .sync-pill.offline { background: rgba(216, 155, 46, 0.15); color: var(--amber); }
+  .sync-pill.offline .dot { background: var(--amber); }
+  .sync-pill.error { background: rgba(194, 57, 42, 0.15); color: var(--red); }
+  .sync-pill.error .dot { background: var(--red); }
+  .sync-pill.not-setup { background: var(--paper-deep); color: var(--ink-muted); }
+  .sync-pill.not-setup .dot { background: var(--ink-muted); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+  .section-title {
+    font-family: 'Fraunces', serif; font-weight: 500;
+    font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--ink-soft); margin: 20px 0 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .section-title button {
+    background: none; border: 1px solid var(--rule); color: var(--ink-soft);
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 5px 11px; border-radius: 2px; cursor: pointer;
+    font-family: 'Inter', sans-serif; font-weight: 500;
+  }
+  .section-title button:hover { border-color: var(--espresso); color: var(--espresso); }
+
+  .cats {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    padding-bottom: 14px; border-bottom: 1px solid var(--rule); margin-bottom: 18px;
+  }
+  .cat {
+    padding: 7px 14px; background: var(--paper-deep); border: 1px solid transparent;
+    border-radius: 999px; font-size: 12px; letter-spacing: 0.03em;
+    color: var(--ink-soft); cursor: pointer; transition: all 0.15s;
+    font-weight: 500;
+  }
+  .cat:hover { color: var(--ink); }
+  .cat.active { background: var(--espresso); color: var(--paper); border-color: var(--espresso); }
+
+  .menu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .item {
+    background: var(--paper-deep); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 14px 12px; cursor: pointer;
+    transition: all 0.15s; position: relative;
+    display: flex; flex-direction: column; justify-content: space-between;
+    min-height: 88px;
+  }
+  .item:hover {
+    border-color: var(--espresso); transform: translateY(-1px); box-shadow: var(--shadow);
+  }
+  .item:active { transform: translateY(0); }
+  .item-name { font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.3; margin-bottom: 6px; }
+  .item-price { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--terracotta); }
+  .item-edit {
+    position: absolute; top: 4px; right: 4px;
+    background: none; border: none; color: var(--ink-muted);
+    font-size: 14px; padding: 2px 6px; cursor: pointer;
+    opacity: 0; transition: opacity 0.15s;
+  }
+  .item:hover .item-edit { opacity: 1; }
+  .item-edit:hover { color: var(--terracotta); }
+
+  /* Cart */
+  .cart-panel {
+    background: var(--paper-deep);
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .cart-head {
+    padding: 20px 26px 14px; border-bottom: 1px solid var(--rule);
+    display: flex; justify-content: space-between; align-items: baseline;
+  }
+  .cart-title { font-family: 'Fraunces', serif; font-weight: 500; font-size: 20px; color: var(--espresso); }
+  .cart-count { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-soft); letter-spacing: 0.1em; }
+
+  .phone-bar {
+    padding: 12px 26px; border-bottom: 1px solid var(--rule);
+    display: flex; gap: 10px; align-items: center; background: var(--paper);
+  }
+  .phone-bar input {
+    flex: 1; padding: 8px 12px; border: 1px solid var(--rule);
+    border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; background: var(--paper-deep);
+  }
+  .phone-bar input:focus { outline: none; border-color: var(--espresso); background: #fff; }
+  .phone-bar .skip {
+    font-size: 10px; color: var(--ink-muted); letter-spacing: 0.1em;
+    text-transform: uppercase; font-style: italic;
+  }
+
+  .cart-body { flex: 1; overflow-y: auto; padding: 14px 26px; }
+  .cart-empty { text-align: center; padding: 40px 0; color: var(--ink-muted); font-size: 14px; font-style: italic; }
+  .cart-item {
+    display: grid; grid-template-columns: 1fr auto; gap: 12px;
+    padding: 10px 0; border-bottom: 1px dashed var(--rule); align-items: center;
+  }
+  .ci-name { font-size: 14px; font-weight: 500; color: var(--ink); }
+  .ci-price { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-soft); }
+  .ci-controls { display: flex; align-items: center; gap: 10px; }
+  .qty-btn {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--paper); border: 1px solid var(--rule);
+    font-size: 16px; cursor: pointer; color: var(--espresso);
+    display: flex; align-items: center; justify-content: center; line-height: 1;
+    font-weight: 500; transition: all 0.15s;
+  }
+  .qty-btn:hover { background: var(--espresso); color: var(--paper); border-color: var(--espresso); }
+  .qty-num { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; min-width: 22px; text-align: center; }
+  .ci-total { text-align: right; min-width: 70px; font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 600; color: var(--espresso); }
+
+  .cart-foot { padding: 18px 26px 22px; border-top: 1px solid var(--rule); background: var(--paper); }
+  .total-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; font-size: 14px; }
+  .total-row.grand { padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--rule); }
+  .total-row.grand .label {
+    font-family: 'Fraunces', serif; font-size: 16px; font-weight: 500;
+    color: var(--ink); letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .total-row.grand .amount {
+    font-family: 'Fraunces', serif; font-weight: 500;
+    font-size: 28px; color: var(--espresso); font-variant-numeric: tabular-nums;
+  }
+  .total-row .label { color: var(--ink-soft); }
+  .total-row .amount { font-family: 'JetBrains Mono', monospace; font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .btn {
+    padding: 14px 16px; border-radius: 4px;
+    font-family: 'Inter', sans-serif; font-size: 12px;
+    font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    cursor: pointer; transition: all 0.15s; border: none;
+  }
+  .btn-primary { background: var(--espresso); color: var(--paper); grid-column: 1 / -1; }
+  .btn-primary:hover { background: var(--ink); }
+  .btn-primary:disabled { background: var(--ink-muted); cursor: not-allowed; opacity: 0.6; }
+  .btn-ghost { background: transparent; color: var(--ink-soft); border: 1px solid var(--rule); }
+  .btn-ghost:hover { border-color: var(--espresso); color: var(--espresso); }
+
+  /* Modals */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(42, 29, 20, 0.5);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px; backdrop-filter: blur(4px);
+  }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--paper); border-radius: 4px;
+    max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; padding: 28px;
+  }
+  .modal h3 {
+    font-family: 'Fraunces', serif; font-weight: 500;
+    font-size: 22px; margin-bottom: 8px; color: var(--espresso);
+  }
+  .modal .subtext { color: var(--ink-soft); font-size: 13px; margin-bottom: 18px; }
+  .modal label {
+    display: block; font-size: 12px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--ink-soft); margin-bottom: 6px;
+  }
+  .modal input, .modal select {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--rule);
+    border-radius: 2px; font-family: 'Inter', sans-serif; font-size: 14px;
+    background: var(--paper-deep); margin-bottom: 14px;
+  }
+  .modal input:focus, .modal select:focus { outline: none; border-color: var(--espresso); background: #fff; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 14px; }
+  .modal-actions .btn { flex: 1; }
+
+  /* Receipt */
+  .receipt-wrap {
+    background: #fff; padding: 20px; max-width: 320px; margin: 0 auto;
+    font-family: 'JetBrains Mono', monospace; color: #000;
+    font-size: 12px; line-height: 1.4;
+  }
+  .receipt-estd {
+    text-align: center; font-size: 10px;
+    letter-spacing: 0.3em; margin-bottom: 10px; font-weight: 700;
+    font-family: 'IM Fell English', 'Fraunces', serif;
+  }
+  .receipt-brand {
+    text-align: center; margin-bottom: 2px;
+    font-family: 'IM Fell English', 'Fraunces', serif; font-weight: 400;
+    font-size: 26px; letter-spacing: 0;
+  }
+  .receipt-tag {
+    text-align: center; font-size: 10px;
+    letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .receipt-addr {
+    text-align: center; font-size: 10px; margin-bottom: 10px; line-height: 1.5;
+  }
+  .receipt-rule { border-top: 1px dashed #000; margin: 8px 0; }
+  .receipt-rule-solid { border-top: 1px solid #000; margin: 8px 0; }
+  .receipt-meta { display: flex; justify-content: space-between; font-size: 10px; margin: 2px 0; }
+  .receipt-items { margin: 10px 0; }
+  .receipt-line {
+    display: grid; grid-template-columns: 22px 1fr 46px 56px;
+    font-size: 11px; padding: 2px 0; gap: 4px;
+  }
+  .receipt-line.head { font-weight: 700; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
+  .receipt-line .r { text-align: right; }
+  .receipt-total {
+    display: flex; justify-content: space-between;
+    font-weight: 700; font-size: 14px; margin: 6px 0;
+  }
+  .receipt-subtotal { display: flex; justify-content: space-between; font-size: 11px; margin: 2px 0; }
+  .receipt-foot { text-align: center; margin-top: 12px; font-size: 10px; line-height: 1.6; }
+  .receipt-foot .thanks {
+    font-family: 'IM Fell English', 'Fraunces', serif;
+    font-weight: 400; font-size: 17px;
+    margin: 8px 0 2px; letter-spacing: 0.02em;
+  }
+  .receipt-foot .thanks-hindi {
+    font-size: 14px; font-weight: 600; margin-bottom: 6px;
+    letter-spacing: 0.01em;
+  }
+  .receipt-foot .insta { letter-spacing: 0.1em; }
+
+  @media print {
+    body { background: #fff; }
+    .app, .modal-overlay:not(.print-mode), .no-print { display: none !important; }
+    .print-mode { display: block !important; }
+    .receipt-wrap { box-shadow: none; padding: 4mm 2mm; max-width: 76mm; width: 76mm; font-size: 11px; }
+    @page { size: 80mm auto; margin: 0; }
+  }
+  .print-mode {
+    display: none; position: fixed; inset: 0;
+    background: var(--paper); z-index: 200; overflow-y: auto; padding: 24px;
+  }
+  .print-mode.show { display: block; }
+  .print-controls {
+    max-width: 400px; margin: 0 auto 20px;
+    display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+  }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: var(--espresso); color: var(--paper);
+    padding: 12px 24px; border-radius: 4px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    opacity: 0; transition: all 0.3s; pointer-events: none; z-index: 300;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { background: var(--red); }
+  .toast.success { background: var(--sage); }
+
+  @media (max-width: 900px) {
+    .cart-panel {
+      position: fixed; bottom: 0; left: 0; right: 0; top: auto;
+      height: auto; max-height: 75vh; z-index: 50;
+      transform: translateY(calc(100% - 90px));
+      transition: transform 0.3s;
+      box-shadow: 0 -10px 30px rgba(42,29,20,0.15);
+    }
+    .cart-panel.open { transform: translateY(0); }
+    .cart-head { cursor: pointer; }
+    .menu-panel { padding-bottom: 120px; }
+  }
+
+  /* Setup banner */
+  .setup-banner {
+    background: var(--amber); color: var(--ink);
+    padding: 10px 20px; text-align: center;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .setup-banner:hover { background: #c4871f; color: #fff; }
+  .setup-banner.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen" style="
+  position: fixed; inset: 0; z-index: 9999;
+  background: linear-gradient(135deg, #3d2817 0%, #2a1d14 100%);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;">
+  <div style="background: #f4ede2; border-radius: 8px; padding: 40px 28px;
+              max-width: 360px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.4);">
+    <div style="text-align: center; margin-bottom: 28px;">
+      <div style="font-family: 'IM Fell English', serif; font-size: 32px;
+                  color: #3d2817; margin-bottom: 4px;">Kaapfi 90's</div>
+      <div style="font-size: 11px; color: #8a7660; letter-spacing: 0.15em;">
+        BILLING · STAFF ACCESS
+      </div>
+    </div>
+    <label style="display: block; font-size: 11px; letter-spacing: 0.1em;
+                  text-transform: uppercase; color: #5a4635; margin-bottom: 6px;">
+      Enter password
+    </label>
+    <input type="password" id="pwInput" autocomplete="current-password"
+           style="width: 100%; padding: 14px; border: 1px solid rgba(42,29,20,0.2);
+                  border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+                  font-size: 15px; background: #fff; margin-bottom: 14px;"
+           onkeypress="if(event.key==='Enter')checkPw()">
+    <div id="pwError" style="color: #c2392a; font-size: 12px; margin-bottom: 12px;
+                             min-height: 18px;"></div>
+    <button onclick="checkPw()"
+            style="width: 100%; padding: 14px; background: #3d2817; color: #f4ede2;
+                   border: none; border-radius: 4px; font-size: 12px; font-weight: 600;
+                   letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;">
+      Unlock
+    </button>
+    <div style="margin-top: 20px; text-align: center; font-size: 10px;
+                color: #8a7660; letter-spacing: 0.05em;">
+      Staff access only · Contact owner for password
+    </div>
+  </div>
+</div>
+
+<script>
+  // Password check — must happen BEFORE app loads
+  const PW_HASH = "db128a3d4712135e84181457473f132f3c200e721a7807d981c262901a0b1726";
+  const PW_KEY = 'kaapfi_auth_v1';
+  const PW_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+  async function sha256(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  // Brute-force protection
+  const PW_ATTEMPT_KEY = 'kaapfi_pw_attempts';
+  function getAttempts() {
+    try { return JSON.parse(localStorage.getItem(PW_ATTEMPT_KEY)) || {count: 0, locked: 0}; }
+    catch { return {count: 0, locked: 0}; }
+  }
+
+  async function checkPw() {
+    const pw = document.getElementById('pwInput').value;
+    const err = document.getElementById('pwError');
+    if (!pw) { err.textContent = 'Enter the password'; return; }
+
+    const attempts = getAttempts();
+    if (attempts.locked > Date.now()) {
+      const mins = Math.ceil((attempts.locked - Date.now()) / 60000);
+      err.textContent = `Too many attempts. Try again in ${mins} min`;
+      return;
+    }
+
+    const hash = await sha256(pw);
+    if (hash === PW_HASH) {
+      localStorage.setItem(PW_KEY, JSON.stringify({ok: true, exp: Date.now() + PW_DURATION}));
+      localStorage.removeItem(PW_ATTEMPT_KEY);
+      document.getElementById('loginScreen').style.display = 'none';
+      document.body.style.overflow = 'auto';
+    } else {
+      attempts.count = (attempts.count || 0) + 1;
+      if (attempts.count >= 5) {
+        attempts.locked = Date.now() + (15 * 60 * 1000); // 15 min lockout
+        attempts.count = 0;
+        err.textContent = 'Too many wrong attempts. Locked for 15 min.';
+      } else {
+        err.textContent = `Wrong password (${5 - attempts.count} attempts left)`;
+      }
+      localStorage.setItem(PW_ATTEMPT_KEY, JSON.stringify(attempts));
+      document.getElementById('pwInput').value = '';
+    }
+  }
+
+  function checkStoredAuth() {
+    try {
+      const auth = JSON.parse(localStorage.getItem(PW_KEY));
+      if (auth && auth.ok && auth.exp > Date.now()) {
+        document.getElementById('loginScreen').style.display = 'none';
+        return true;
+      }
+    } catch {}
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => document.getElementById('pwInput').focus(), 100);
+    return false;
+  }
+
+  // Run on page load
+  checkStoredAuth();
+</script>
+
+
+<div class="setup-banner" id="setupBanner" onclick="openSettings()">
+  ⚙ Google Sheet not connected — click here to set up (data still saves locally)
+</div>
+
+<div class="app">
+
+  <!-- MENU -->
+  <div class="menu-panel">
+    <div class="brand-bar">
+      <div>
+        <div class="brand">Kaapfi 90's</div>
+        <div style="font-size: 11px; color: var(--ink-muted); margin-top: 2px; letter-spacing: 0.05em;">Chatrapati Nagar, Nagpur · ESTD 2025</div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <div class="sync-pill not-setup" id="syncPill" onclick="syncNow()">
+          <span class="dot"></span><span id="syncText">Not connected</span>
+        </div>
+        <button class="btn btn-ghost" onclick="openSettings()" style="padding: 5px 10px; font-size: 10px;">⚙ Settings</button>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <span>Menu</span>
+      <button onclick="openAddItem()">+ Add item</button>
+    </div>
+
+    <div class="cats" id="cats"></div>
+    <div class="menu-grid" id="menuGrid"></div>
+  </div>
+
+  <!-- CART -->
+  <div class="cart-panel" id="cartPanel">
+    <div class="cart-head" onclick="toggleCart()">
+      <div class="cart-title">Current order</div>
+      <div class="cart-count" id="cartCount">0 items</div>
+    </div>
+
+    <div class="phone-bar">
+      <input type="tel" id="phoneInput" placeholder="Customer phone (optional)" maxlength="15" inputmode="numeric">
+      <span class="skip">skip ok</span>
+    </div>
+
+    <div class="cart-body" id="cartBody">
+      <div class="cart-empty">Tap menu items to add</div>
+    </div>
+
+    <div class="cart-foot">
+      <div class="total-row">
+        <span class="label">Subtotal</span>
+        <span class="amount">₹<span id="subtotal">0</span></span>
+      </div>
+      <div class="total-row grand">
+        <span class="label">Total</span>
+        <span class="amount">₹<span id="grandTotal">0</span></span>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" id="printBtn" onclick="generateBill()" disabled>Print receipt</button>
+        <button class="btn btn-ghost" onclick="clearCart()">Clear</button>
+        <button class="btn btn-ghost" onclick="showHistory()">History</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Add/Edit Item Modal -->
+<div class="modal-overlay" id="itemModal">
+  <div class="modal">
+    <h3 id="itemModalTitle">Add menu item</h3>
+    <label>Item name</label>
+    <input type="text" id="itemName" placeholder="e.g. Cappuccino">
+    <label>Price (₹)</label>
+    <input type="number" id="itemPrice" placeholder="150" min="0" step="1">
+    <label>Category</label>
+    <select id="itemCat">
+      <option value="Coffee">Coffee</option>
+      <option value="Tea">Tea</option>
+      <option value="Cold">Cold Beverages</option>
+      <option value="Food">Food</option>
+      <option value="Dessert">Dessert</option>
+      <option value="Other">Other</option>
+    </select>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeItemModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveItem()" style="grid-column: auto;">Save</button>
+    </div>
+    <button class="btn btn-ghost" id="deleteBtn" onclick="deleteItem()" style="width:100%; margin-top:10px; display:none; color: var(--red); border-color: rgba(194,57,42,0.3);">Delete item</button>
+  </div>
+</div>
+
+<!-- History Modal -->
+<div class="modal-overlay" id="historyModal">
+  <div class="modal" style="max-width: 640px;">
+    <h3>Today's orders</h3>
+    <div id="historyBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeHistory()">Close</button>
+      <button class="btn btn-primary" onclick="exportCsv()" style="grid-column: auto;">Export CSV</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <h3>Settings</h3>
+    <p class="subtext">Connect your Google Sheet to auto-sync every bill. Works offline — syncs when internet returns.</p>
+
+    <label>Google Apps Script Web App URL</label>
+    <input type="text" id="webhookInput" placeholder="https://script.google.com/macros/s/.../exec">
+    <p style="font-size: 11px; color: var(--ink-muted); margin: -8px 0 14px;">Paste the URL from your Apps Script deployment.</p>
+
+    <div id="syncQueueInfo" style="font-size: 12px; color: var(--ink-soft); background: var(--paper-deep); padding: 12px; border-radius: 4px; margin-bottom: 14px;"></div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeSettings()">Close</button>
+      <button class="btn btn-primary" onclick="saveSettings()" style="grid-column: auto;">Save & Test</button>
+    </div>
+    <button class="btn btn-ghost" onclick="syncNow()" style="width:100%; margin-top:10px;">Sync pending bills now</button>
+    <button class="btn btn-ghost" onclick="lockApp()" style="width:100%; margin-top:8px; color: var(--red); border-color: rgba(194,57,42,0.3);">🔒 Lock app (logout)</button>
+  </div>
+</div>
+
+<script>
+  function lockApp() {
+    if (!confirm('Lock the app? You\'ll need to re-enter the password.')) return;
+    localStorage.removeItem('kaapfi_auth_v1');
+    location.reload();
+  }
+</script>
+
+<!-- Print Mode -->
+<div class="print-mode" id="printMode">
+  <div class="print-controls no-print">
+    <button class="btn btn-primary" onclick="doPrint()" style="grid-column: auto;">Print receipt</button>
+    <button class="btn btn-ghost" onclick="closePrint()">Back to billing</button>
+  </div>
+  <div id="receiptContainer"></div>
+</div>
+
+<div class="toast" id="toast">Saved</div>
+
+<script>
+  // ——— Kaapfi 90's store details ———
+
+  // ——— SECURITY: Input sanitization ———
+  function sanitize(input) {
+    if (input === null || input === undefined) return '';
+    const s = String(input);
+    // Remove control characters + null bytes
+    const clean = s.replace(/[\x00-\x1f\x7f]/g, '');
+    // Limit length to prevent DOS
+    return clean.slice(0, 200);
+  }
+  function sanitizePhone(input) {
+    if (!input) return '';
+    // Only digits, +, -, spaces, max 20 chars
+    return String(input).replace(/[^0-9+\-\s]/g, '').slice(0, 20).trim();
+  }
+  function sanitizePrice(input) {
+    const n = Number(input);
+    if (!isFinite(n) || n < 0 || n > 999999) return 0;
+    return Math.round(n * 100) / 100; // 2 decimals max
+  }
+  function sanitizeQty(input) {
+    const n = parseInt(input, 10);
+    if (!isFinite(n) || n < 0 || n > 999) return 0;
+    return n;
+  }
+
+  // ——— SECURITY: Rate limiting ———
+  let lastBillTime = 0;
+  function isRateLimited() {
+    const now = Date.now();
+    if (now - lastBillTime < 500) { // Max 1 bill per 500ms
+      toast('Wait a moment before next bill', 'error');
+      return true;
+    }
+    lastBillTime = now;
+    return false;
+  }
+
+  const STORE = {
+    name: "Kaapfi 90's",
+    tagline: "Specialty Coffee",
+    address: "Shop No 1, Shru Pooja App, Plot 203",
+    addressLine2: "Ring Road, Chatrapati Nagar",
+    city: "Nagpur, Maharashtra 440014",
+    instagram: "@kaapfi90s"
+  };
+
+  // ——— Default menu ———
+  const defaultMenu = [
+    { id: 1, name: 'Espresso', price: 90, cat: 'Coffee' },
+    { id: 2, name: 'Americano', price: 110, cat: 'Coffee' },
+    { id: 3, name: 'Cappuccino', price: 150, cat: 'Coffee' },
+    { id: 4, name: 'Latte', price: 160, cat: 'Coffee' },
+    { id: 5, name: 'Flat White', price: 170, cat: 'Coffee' },
+    { id: 6, name: 'Mocha', price: 180, cat: 'Coffee' },
+    { id: 7, name: 'Pour Over', price: 220, cat: 'Coffee' },
+    { id: 8, name: 'Filter Coffee', price: 80, cat: 'Coffee' },
+    { id: 9, name: 'Masala Chai', price: 60, cat: 'Tea' },
+    { id: 10, name: 'Green Tea', price: 80, cat: 'Tea' },
+    { id: 11, name: 'Lemon Tea', price: 70, cat: 'Tea' },
+    { id: 12, name: 'Iced Americano', price: 140, cat: 'Cold' },
+    { id: 13, name: 'Iced Latte', price: 180, cat: 'Cold' },
+    { id: 14, name: 'Cold Brew', price: 200, cat: 'Cold' },
+    { id: 15, name: 'Frappe', price: 220, cat: 'Cold' },
+    { id: 16, name: 'Croissant', price: 120, cat: 'Food' },
+    { id: 17, name: 'Sandwich', price: 180, cat: 'Food' },
+    { id: 18, name: 'Garlic Bread', price: 140, cat: 'Food' },
+    { id: 19, name: 'Chocolate Cake', price: 160, cat: 'Dessert' },
+    { id: 20, name: 'Brownie', price: 130, cat: 'Dessert' }
+  ];
+
+  // ——— State ———
+  let menu = loadMenu();
+  let cart = [];
+  let activeCat = 'All';
+  let editingItem = null;
+  let allOrders = loadAllOrders();
+  let syncQueue = loadSyncQueue();
+  let webhookUrl = localStorage.getItem('kaapfi_webhook') || '';
+
+  const $ = id => document.getElementById(id);
+  const fmt = n => Math.round(n).toLocaleString('en-IN');
+
+  // ——— Storage ———
+  function loadMenu() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('kaapfi_menu'));
+      if (!Array.isArray(saved) || !saved.length) return [...defaultMenu];
+      // Validate each item — reject malformed data
+      const validCats = ['Coffee', 'Tea', 'Cold', 'Food', 'Dessert', 'Other'];
+      const clean = saved.filter(item =>
+        item && typeof item === 'object' &&
+        Number.isInteger(item.id) && item.id > 0 &&
+        typeof item.name === 'string' && item.name.length > 0 && item.name.length <= 200 &&
+        typeof item.price === 'number' && item.price >= 0 && item.price < 999999 &&
+        validCats.includes(item.cat)
+      ).map(item => ({
+        id: item.id,
+        name: sanitize(item.name),
+        price: sanitizePrice(item.price),
+        cat: item.cat
+      }));
+      return clean.length ? clean : [...defaultMenu];
+    } catch { return [...defaultMenu]; }
+  }
+  function saveMenu() { localStorage.setItem('kaapfi_menu', JSON.stringify(menu)); }
+
+  function loadAllOrders() {
+    try { return JSON.parse(localStorage.getItem('kaapfi_orders')) || []; }
+    catch { return []; }
+  }
+  function saveOrders() { localStorage.setItem('kaapfi_orders', JSON.stringify(allOrders)); }
+
+  function todayOrders() {
+    const today = new Date().toDateString();
+    return allOrders.filter(o => new Date(o.time).toDateString() === today);
+  }
+
+  function loadSyncQueue() {
+    try { return JSON.parse(localStorage.getItem('kaapfi_sync_queue')) || []; }
+    catch { return []; }
+  }
+  function saveSyncQueue() { localStorage.setItem('kaapfi_sync_queue', JSON.stringify(syncQueue)); }
+
+  // ——— Render menu ———
+  function renderCats() {
+    const cats = ['All', ...new Set(menu.map(i => i.cat))];
+    $('cats').innerHTML = cats.map(c =>
+      `<div class="cat ${c === activeCat ? 'active' : ''}" onclick="selectCat('${c}')">${c}</div>`
+    ).join('');
+  }
+  function selectCat(c) { activeCat = c; renderCats(); renderMenu(); }
+
+  function renderMenu() {
+    const items = activeCat === 'All' ? menu : menu.filter(i => i.cat === activeCat);
+    $('menuGrid').innerHTML = items.map(item => `
+      <div class="item" onclick="addToCart(${item.id})">
+        <button class="item-edit" onclick="event.stopPropagation(); openEditItem(${item.id})" title="Edit">✎</button>
+        <div class="item-name">${escapeHtml(item.name)}</div>
+        <div class="item-price">₹${fmt(item.price)}</div>
+      </div>
+    `).join('');
+    if (!items.length) {
+      $('menuGrid').innerHTML = '<div style="grid-column:1/-1; padding:40px; text-align:center; color: var(--ink-muted);">No items</div>';
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+  }
+
+  // ——— Cart ———
+  function addToCart(id) {
+    const item = menu.find(i => i.id === id);
+    if (!item) return;
+    const existing = cart.find(c => c.id === id);
+    if (existing) existing.qty++;
+    else cart.push({ ...item, qty: 1 });
+    renderCart();
+  }
+
+  function changeQty(id, delta) {
+    const item = cart.find(c => c.id === id);
+    if (!item) return;
+    item.qty += delta;
+    if (item.qty <= 0) cart = cart.filter(c => c.id !== id);
+    renderCart();
+  }
+
+  function renderCart() {
+    const body = $('cartBody');
+    if (!cart.length) {
+      body.innerHTML = '<div class="cart-empty">Tap menu items to add</div>';
+    } else {
+      body.innerHTML = cart.map(c => `
+        <div class="cart-item">
+          <div>
+            <div class="ci-name">${escapeHtml(c.name)}</div>
+            <div class="ci-price">₹${fmt(c.price)} × ${c.qty}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:16px;">
+            <div class="ci-controls">
+              <button class="qty-btn" onclick="changeQty(${c.id}, -1)">−</button>
+              <span class="qty-num">${c.qty}</span>
+              <button class="qty-btn" onclick="changeQty(${c.id}, 1)">+</button>
+            </div>
+            <div class="ci-total">₹${fmt(c.price * c.qty)}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+    const subtotal = cart.reduce((s, c) => s + c.price * c.qty, 0);
+    $('subtotal').textContent = fmt(subtotal);
+    $('grandTotal').textContent = fmt(subtotal);
+    const totalQty = cart.reduce((s,c)=>s+c.qty,0);
+    $('cartCount').textContent = `${totalQty} item${totalQty === 1 ? '' : 's'}`;
+    $('printBtn').disabled = cart.length === 0;
+  }
+
+  function clearCart() {
+    if (cart.length && !confirm('Clear the current order?')) return;
+    cart = []; $('phoneInput').value = ''; renderCart();
+  }
+
+  function toggleCart() {
+    if (window.innerWidth <= 900) $('cartPanel').classList.toggle('open');
+  }
+
+  // ——— Item management ———
+  function openAddItem() {
+    editingItem = null;
+    $('itemModalTitle').textContent = 'Add menu item';
+    $('itemName').value = ''; $('itemPrice').value = ''; $('itemCat').value = 'Coffee';
+    $('deleteBtn').style.display = 'none';
+    $('itemModal').classList.add('show');
+    setTimeout(() => $('itemName').focus(), 50);
+  }
+  function openEditItem(id) {
+    editingItem = menu.find(i => i.id === id);
+    if (!editingItem) return;
+    $('itemModalTitle').textContent = 'Edit menu item';
+    $('itemName').value = editingItem.name;
+    $('itemPrice').value = editingItem.price;
+    $('itemCat').value = editingItem.cat;
+    $('deleteBtn').style.display = 'block';
+    $('itemModal').classList.add('show');
+  }
+  function closeItemModal() { $('itemModal').classList.remove('show'); }
+
+  function saveItem() {
+    const name = sanitize($('itemName').value.trim());
+    const price = sanitizePrice($('itemPrice').value);
+    const cat = sanitize($('itemCat').value);
+    const validCats = ['Coffee', 'Tea', 'Cold', 'Food', 'Dessert', 'Other'];
+    if (!name || price <= 0) { toast('Enter name and price', 'error'); return; }
+    if (!validCats.includes(cat)) { toast('Invalid category', 'error'); return; }
+    if (editingItem) {
+      editingItem.name = name; editingItem.price = price; editingItem.cat = cat;
+    } else {
+      const newId = Math.max(0, ...menu.map(m => m.id)) + 1;
+      menu.push({ id: newId, name, price, cat });
+    }
+    saveMenu(); renderCats(); renderMenu(); closeItemModal();
+    toast(editingItem ? 'Item updated' : 'Item added', 'success');
+  }
+
+  function deleteItem() {
+    if (!editingItem || !confirm(`Delete "${editingItem.name}"?`)) return;
+    menu = menu.filter(m => m.id !== editingItem.id);
+    saveMenu(); renderCats(); renderMenu(); closeItemModal();
+    toast('Item deleted');
+  }
+
+  // ——— Generate Bill ———
+  function generateBill() {
+    if (!cart.length) return;
+    if (isRateLimited()) return;
+    const subtotal = cart.reduce((s, c) => s + c.price * c.qty, 0);
+    const now = new Date();
+    const dayOrders = todayOrders();
+    const billNo = 'K90-' + now.getFullYear().toString().slice(2) +
+                   String(now.getMonth()+1).padStart(2,'0') +
+                   String(now.getDate()).padStart(2,'0') + '-' +
+                   String(dayOrders.length + 1).padStart(3,'0');
+
+    const phone = sanitizePhone($('phoneInput').value);
+
+    const order = {
+      billNo, time: now.toISOString(),
+      items: cart.map(c => ({ name: c.name, price: c.price, qty: c.qty })),
+      phone, total: subtotal, synced: false
+    };
+    allOrders.push(order); saveOrders();
+
+    // Queue for sync
+    syncQueue.push({ ...order });
+    saveSyncQueue();
+    trySync();
+
+    renderReceipt(order);
+    $('printMode').classList.add('show');
+  }
+
+  function renderReceipt(order) {
+    const d = new Date(order.time);
+    const date = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const itemRows = order.items.map(it => `
+      <div class="receipt-line">
+        <div>${it.qty}</div>
+        <div>${escapeHtml(it.name)}</div>
+        <div class="r">${fmt(it.price)}</div>
+        <div class="r">${fmt(it.price * it.qty)}</div>
+      </div>
+    `).join('');
+    const totalQty = order.items.reduce((s,i) => s + i.qty, 0);
+
+    $('receiptContainer').innerHTML = `
+      <div class="receipt-wrap">
+        <div class="receipt-brand">Kaapfi 90's</div>
+        <div class="receipt-estd">ESTD · 2025</div>
+        <div class="receipt-addr">
+          ${STORE.address}<br>
+          ${STORE.addressLine2}<br>
+          ${STORE.city}
+        </div>
+        <div class="receipt-rule-solid"></div>
+        <div class="receipt-meta"><span>Bill No:</span><span>${order.billNo}</span></div>
+        <div class="receipt-meta"><span>Date:</span><span>${date}</span></div>
+        <div class="receipt-meta"><span>Time:</span><span>${time}</span></div>
+        ${order.phone ? `<div class="receipt-meta"><span>Phone:</span><span>${escapeHtml(order.phone)}</span></div>` : ''}
+        <div class="receipt-rule"></div>
+        <div class="receipt-items">
+          <div class="receipt-line head">
+            <div>Qt</div><div>Item</div><div class="r">Rate</div><div class="r">Amt</div>
+          </div>
+          ${itemRows}
+        </div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-subtotal"><span>Items: ${totalQty}</span><span>Subtotal: ${fmt(order.total)}</span></div>
+        <div class="receipt-rule-solid"></div>
+        <div class="receipt-total"><span>TOTAL</span><span>₹${fmt(order.total)}</span></div>
+        <div class="receipt-rule-solid"></div>
+        <div class="receipt-foot">
+          <div class="thanks">Jo Hai, Kaapfi Hai.</div>
+          <div class="thanks-hindi">जो है, काफी है।</div>
+          <div style="margin-top:6px;">Thank you, come again!</div>
+          <div style="margin-top:8px;" class="insta">IG: ${STORE.instagram}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function doPrint() { window.print(); }
+  function closePrint() {
+    $('printMode').classList.remove('show');
+    cart = []; $('phoneInput').value = ''; renderCart();
+    toast('Order saved', 'success');
+  }
+
+  // ——— Google Sheets Sync ———
+  function updateSyncUI() {
+    const pill = $('syncPill');
+    const text = $('syncText');
+    const banner = $('setupBanner');
+
+    if (!webhookUrl) {
+      pill.className = 'sync-pill not-setup';
+      text.textContent = 'Not connected';
+      banner.classList.remove('hidden');
+      return;
+    }
+    banner.classList.add('hidden');
+
+    if (!navigator.onLine) {
+      pill.className = 'sync-pill offline';
+      text.textContent = `Offline · ${syncQueue.length} pending`;
+      return;
+    }
+
+    if (syncQueue.length > 0) {
+      pill.className = 'sync-pill offline';
+      text.textContent = `${syncQueue.length} pending · tap to sync`;
+    } else {
+      pill.className = 'sync-pill online';
+      text.textContent = 'All synced ✓';
+    }
+  }
+
+  async function trySync() {
+    updateSyncUI();
+    if (!webhookUrl || !navigator.onLine || syncQueue.length === 0) return;
+
+    const pending = [...syncQueue];
+    let successCount = 0;
+    for (const order of pending) {
+      try {
+        const d = new Date(order.time);
+        const itemsSummary = order.items.map(i => `${i.name} x${i.qty}`).join(', ');
+        const payload = {
+          billNo: order.billNo,
+          date: d.toLocaleDateString('en-IN'),
+          time: d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+          items: itemsSummary,
+          phone: order.phone || '',
+          total: order.total
+        };
+
+        // Retry up to 3 times with delay — using Promise.race for timeout
+        let success = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const fetchPromise = fetch(webhookUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify(payload)
+            });
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Timeout after 15s')), 15000)
+            );
+            await Promise.race([fetchPromise, timeoutPromise]);
+            success = true;
+            break;
+          } catch (err) {
+            console.warn(`Sync attempt ${attempt + 1} failed for ${order.billNo}:`, err.message);
+            if (attempt < 2) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+          }
+        }
+
+        if (success) {
+          syncQueue = syncQueue.filter(q => q.billNo !== order.billNo);
+          const o = allOrders.find(o => o.billNo === order.billNo);
+          if (o) o.synced = true;
+          saveSyncQueue(); saveOrders();
+          successCount++;
+        } else {
+          console.error('All retry attempts failed for', order.billNo);
+          break; // Stop processing queue, will retry on next cycle
+        }
+      } catch (err) {
+        console.error('Sync failed for', order.billNo, err);
+        break;
+      }
+    }
+    updateSyncUI();
+    if (successCount > 0 && syncQueue.length === 0) {
+      toast(`${successCount} bill${successCount > 1 ? 's' : ''} synced`, 'success');
+    }
+  }
+
+  function syncNow() {
+    if (!webhookUrl) { openSettings(); return; }
+    if (!navigator.onLine) { toast('No internet — will sync when back', 'error'); return; }
+    if (syncQueue.length === 0) { toast('Already synced', 'success'); return; }
+    toast(`Syncing ${syncQueue.length} bills…`);
+    trySync();
+  }
+
+  // ——— Settings ———
+  function openSettings() {
+    $('webhookInput').value = webhookUrl;
+    const info = $('syncQueueInfo');
+    info.innerHTML = `
+      <strong>Status:</strong> ${webhookUrl ? 'Connected' : 'Not connected'}<br>
+      <strong>Pending to sync:</strong> ${syncQueue.length} bills<br>
+      <strong>Total orders saved locally:</strong> ${allOrders.length}<br>
+      <strong>Internet:</strong> ${navigator.onLine ? 'Online' : 'Offline'}
+    `;
+    $('settingsModal').classList.add('show');
+  }
+  function closeSettings() { $('settingsModal').classList.remove('show'); }
+
+  async function saveSettings() {
+    const url = $('webhookInput').value.trim();
+    if (url) {
+      // Strict URL validation — only Google Apps Script
+      try {
+        const u = new URL(url);
+        if (u.protocol !== 'https:' ||
+            !u.hostname.endsWith('.google.com') ||
+            !u.pathname.includes('/macros/s/') ||
+            !u.pathname.endsWith('/exec')) {
+          toast('Invalid URL — must be Google Apps Script /exec URL', 'error');
+          return;
+        }
+      } catch (e) {
+        toast('Invalid URL format', 'error');
+        return;
+      }
+    }
+    webhookUrl = url;
+    localStorage.setItem('kaapfi_webhook', webhookUrl);
+    updateSyncUI();
+    closeSettings();
+    if (webhookUrl) {
+      toast('Saved · syncing pending bills', 'success');
+      trySync();
+    } else {
+      toast('Webhook cleared');
+    }
+  }
+
+  // ——— History ———
+  function showHistory() {
+    const orders = todayOrders();
+    const body = $('historyBody');
+    if (!orders.length) {
+      body.innerHTML = '<div style="text-align:center; padding:32px; color: var(--ink-muted);">No orders yet today</div>';
+    } else {
+      const total = orders.reduce((s,o) => s + o.total, 0);
+      const withPhone = orders.filter(o => o.phone).length;
+      const rows = orders.slice().reverse().map(o => {
+        const t = new Date(o.time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        const items = o.items.map(i => `${i.name}×${i.qty}`).join(', ');
+        const syncIcon = o.synced ? '<span style="color: var(--sage);" title="Synced">✓</span>' : '<span style="color: var(--amber);" title="Pending sync">◷</span>';
+        return `<div style="padding: 12px 0; border-bottom: 1px solid var(--rule);">
+          <div style="display:flex; justify-content: space-between; margin-bottom: 4px; align-items: center;">
+            <strong style="font-family: 'JetBrains Mono', monospace; font-size: 12px;">${o.billNo} ${syncIcon}</strong>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-soft);">${t}${o.phone ? ' · ' + escapeHtml(o.phone) : ''}</span>
+          </div>
+          <div style="font-size: 13px; color: var(--ink-soft); margin-bottom: 4px;">${escapeHtml(items)}</div>
+          <div style="text-align: right; font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--espresso);">₹${fmt(o.total)}</div>
+        </div>`;
+      }).join('');
+      body.innerHTML = `
+        <div style="background: var(--paper-deep); padding: 16px; border-radius: 4px; margin-bottom: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+          <div>
+            <div style="font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);">Total</div>
+            <div style="font-family: 'Fraunces', serif; font-size: 24px; font-weight: 500; color: var(--espresso);">₹${fmt(total)}</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);">Orders</div>
+            <div style="font-family: 'Fraunces', serif; font-size: 24px; font-weight: 500;">${orders.length}</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);">Phone captured</div>
+            <div style="font-family: 'Fraunces', serif; font-size: 24px; font-weight: 500;">${withPhone}/${orders.length}</div>
+          </div>
+        </div>
+        ${rows}
+      `;
+    }
+    $('historyModal').classList.add('show');
+  }
+  function closeHistory() { $('historyModal').classList.remove('show'); }
+
+  function exportCsv() {
+    const orders = todayOrders();
+    if (!orders.length) { toast('No orders to export', 'error'); return; }
+    const rows = [['Bill No', 'Date', 'Time', 'Items', 'Phone', 'Total']];
+    orders.forEach(o => {
+      const d = new Date(o.time);
+      rows.push([
+        o.billNo,
+        d.toLocaleDateString('en-IN'),
+        d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+        o.items.map(i => `${i.name} x${i.qty}`).join('; '),
+        o.phone || '',
+        o.total
+      ]);
+    });
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kaapfi90s-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('CSV exported', 'success');
+  }
+
+  function toast(msg, type = '') {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  // ——— Auto-sync on connection restore + every 30s ———
+  window.addEventListener('online', () => { toast('Back online · syncing', 'success'); trySync(); });
+  window.addEventListener('offline', () => { updateSyncUI(); toast('Offline · bills saving locally'); });
+  setInterval(() => { if (syncQueue.length > 0) trySync(); updateSyncUI(); }, 30000);
+
+  // ——— Keyboard ———
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.key === 'Enter' && cart.length) generateBill();
+    if (e.key === 'Escape') {
+      if ($('printMode').classList.contains('show')) closePrint();
+      else if ($('itemModal').classList.contains('show')) closeItemModal();
+      else if ($('historyModal').classList.contains('show')) closeHistory();
+      else if ($('settingsModal').classList.contains('show')) closeSettings();
+    }
+  });
+
+  // ——— Init ———
+  renderCats();
+  renderMenu();
+  renderCart();
+  updateSyncUI();
+  trySync();
+</script>
+
+</body>
+</html>
