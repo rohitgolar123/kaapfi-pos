@@ -214,7 +214,10 @@ function downloadCSV(data, filename) {
 
 export default function CafePOS() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isPublicMenuMode, setIsPublicMenuMode] = useState(false);
+  const [isPublicMenuMode, setIsPublicMenuMode] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('tab') === 'publicmenu' || window.location.hostname === 'menukaapfi.netlify.app' || window.location.hostname === 'menukaapfi.vercel.app';
+  });
   const [loginInput, setLoginInput] = useState('');
   const [loginError, setLoginError] = useState('');
   const [orders, setOrders] = useState([]);
@@ -440,19 +443,25 @@ export default function CafePOS() {
     };
   }, [isLoggedIn]);
 
-  // PUBLIC MENU MODE - load only menu, settings, table status (no login needed)
+  // PUBLIC MENU MODE - real-time Firebase listeners (no login needed)
   useEffect(() => {
     if (!isPublicMenuMode) return;
     const unsubMenu = onSnapshot(doc(db, "appData", "menu"), (snap) => {
       if (snap.exists()) setMenuItems(snap.data().items || defaultMenu);
     });
     const unsubSettings = onSnapshot(doc(db, "appData", "settings"), (snap) => {
-      if (snap.exists()) setSettings({ ...defaultSettings, ...snap.data().data });
+      if (snap.exists()) setSettings(s => ({ ...s, ...snap.data().data }));
     });
     const unsubTableStatus = onSnapshot(doc(db, "appData", "tableStatus"), (snap) => {
       if (snap.exists()) setTableStatus(snap.data().data || { 1: 'available', 2: 'available', 3: 'available', 4: 'available' });
     });
-    return () => { unsubMenu(); unsubSettings(); unsubTableStatus(); };
+    const unsubUpsell = onSnapshot(doc(db, "appData", "upsellItems"), (snap) => {
+      if (snap.exists()) setUpsellItems(snap.data().items || []);
+    });
+    const unsubUpsellSettings = onSnapshot(doc(db, "appData", "upsellSettings"), (snap) => {
+      if (snap.exists()) setUpsellSettings(prev => ({ ...prev, ...snap.data() }));
+    });
+    return () => { unsubMenu(); unsubSettings(); unsubTableStatus(); unsubUpsell(); unsubUpsellSettings(); };
   }, [isPublicMenuMode]);
 
   // Load customers when tab opened
