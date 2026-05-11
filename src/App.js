@@ -1229,26 +1229,41 @@ export default function CafePOS() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f5f5f5', fontFamily: 'system-ui, sans-serif' }}>
+    <div className="adm" style={{ minHeight: '100vh', background: '#0D1B2E', fontFamily: 'system-ui, sans-serif' }}>
       <style>{`
-        input, select, textarea {
-          color: #000 !important;
+        /* ═══ ADMIN DARK THEME ═══ */
+        .adm { background: #0D1B2E; color: #fff; }
+        .adm h1, .adm h2, .adm h3, .adm h4, .adm h5 { color: #fff !important; }
+        .adm p { color: #c0d8ec !important; }
+        .adm label { color: #c8e0f4 !important; font-weight: 700 !important; }
+        .adm strong { color: #fff !important; }
+        .adm li { color: #c0d8ec !important; }
+        /* Admin inputs — dark bg, white text */
+        .adm input:not([type=checkbox]):not([type=radio]),
+        .adm select,
+        .adm textarea {
+          background: #1a3a5c !important;
+          color: #fff !important;
+          border-color: rgba(255,255,255,0.2) !important;
           font-weight: 600 !important;
         }
-        input::placeholder {
-          color: #666 !important;
-          font-weight: 500 !important;
-        }
-        label {
-          color: #000 !important;
-          font-weight: 700 !important;
-        }
-        h1, h2, h3, h4, h5 {
-          color: #000 !important;
-        }
-        p, span, div {
-          color: inherit;
-        }
+        .adm input::placeholder { color: rgba(255,255,255,0.4) !important; font-weight: 500 !important; }
+        .adm select option { background: #1a3a5c; color: #fff; }
+        /* Admin card surfaces */
+        .adm .ac { background: #122B45 !important; border-color: rgba(255,255,255,0.1) !important; }
+        .adm .ac2 { background: #0F2236 !important; border-color: rgba(255,255,255,0.08) !important; }
+        .adm .ac3 { background: #1a3a5c !important; border-color: rgba(255,255,255,0.15) !important; }
+        /* Scrollbar */
+        .adm ::-webkit-scrollbar { height: 4px; width: 4px; }
+        .adm ::-webkit-scrollbar-track { background: #0D1B2E; }
+        .adm ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+        /* Checkbox accent */
+        .adm input[type=checkbox] { accent-color: #FC8019; }
+        /* Table */
+        .adm table { border-collapse: collapse; width: 100%; }
+        .adm th { background: #0F2236 !important; color: #fff !important; padding: 10px 12px; font-size: 12px; font-weight: 800; text-align: left; border-bottom: 2px solid rgba(255,255,255,0.1); }
+        .adm td { padding: 10px 12px; font-size: 13px; color: #c8e0f4; border-bottom: 1px solid rgba(255,255,255,0.06); font-weight: 600; }
+        .adm tr:hover td { background: rgba(255,255,255,0.04); }
         @keyframes slideIn {
           from { transform: translateX(120%); opacity: 0; }
           to { transform: translateX(0); opacity: 1; }
@@ -1314,7 +1329,7 @@ export default function CafePOS() {
         </div>
       </header>}
 
-      {!isPublicMenuMode && <nav style={{ background: '#fff', display: 'flex', borderBottom: '1px solid #eee', padding: '0 24px', overflowX: 'auto', gap: '8px' }}>
+      {!isPublicMenuMode && <nav style={{ background: '#0A1929', display: 'flex', borderBottom: '2px solid rgba(255,255,255,0.08)', padding: '0 24px', overflowX: 'auto', gap: '4px', boxShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>
         {[
           { id: 'order', icon: '🛒', label: 'New Order' },
           { id: 'bills', icon: '🧾', label: 'Bills' },
@@ -1334,7 +1349,7 @@ export default function CafePOS() {
         ].map(tab => {
           const pendingCount = tab.id === 'kitchen' ? todayOrders.filter(o => o.source === 'public_menu' && o.status === 'pending_acceptance').length : 0;
           return (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '16px 16px', border: 'none', background: 'transparent', color: activeTab === tab.id ? '#FC8019' : '#666', cursor: 'pointer', fontSize: '13px', fontWeight: activeTab === tab.id ? '700' : '500', borderBottom: activeTab === tab.id ? '3px solid #FC8019' : '3px solid transparent', whiteSpace: 'nowrap', position: 'relative' }}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '14px 14px', border: 'none', background: activeTab === tab.id ? 'rgba(252,128,25,0.12)' : 'transparent', color: activeTab === tab.id ? '#FC8019' : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === tab.id ? '800' : '600', borderBottom: activeTab === tab.id ? '3px solid #FC8019' : '3px solid transparent', borderRadius: '4px 4px 0 0', whiteSpace: 'nowrap', position: 'relative', transition: 'all 0.15s' }}>
               {tab.icon} {tab.label}
               {pendingCount > 0 && (
                 <span style={{ position: 'absolute', top: '8px', right: '4px', background: '#E64A19', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{pendingCount}</span>
@@ -1388,10 +1403,10 @@ export default function CafePOS() {
                         }
                       }
                     }}
-                      style={{ flex: '1', minWidth: '80px', background: isSelected ? '#FC8019' : occupied ? '#FFF3E0' : '#E8F5E9', border: `2px solid ${isSelected ? '#E64A19' : occupied ? '#E64A19' : '#4CAF50'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
+                      style={{ flex: '1', minWidth: '80px', background: isSelected ? '#FC8019' : occupied ? 'rgba(230,74,25,0.15)' : 'rgba(76,175,80,0.1)', border: `2px solid ${isSelected ? '#E64A19' : occupied ? '#E64A19' : '#4CAF50'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
                       <div style={{ fontSize: '18px' }}>{isSelected ? '✅' : occupied ? '🔴' : '🟢'}</div>
-                      <div style={{ fontSize: '13px', fontWeight: '800', color: isSelected ? '#fff' : '#000' }}>Table {t}</div>
-                      <div style={{ fontSize: '11px', fontWeight: '700', color: isSelected ? '#fff' : occupied ? '#E64A19' : '#4CAF50' }}>{isSelected ? 'Selected' : occupied ? '+ Add Items' : 'Free'}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>Table {t}</div>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: isSelected ? '#fff' : occupied ? '#FC8019' : '#69F0AE' }}>{isSelected ? 'Selected' : occupied ? '+ Add Items' : 'Free'}</div>
                       {occupied && !isSelected && (
                         <button onClick={(e) => { e.stopPropagation(); const u = { ...tableStatus, [t]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u); }}
                           style={{ marginTop: '4px', fontSize: '9px', fontWeight: '800', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer' }}>
@@ -1402,16 +1417,16 @@ export default function CafePOS() {
                   );
                 })}
                 <div onClick={() => setSelectedTable(selectedTable === 'T/A' ? null : 'T/A')}
-                  style={{ flex: '1', minWidth: '80px', background: selectedTable === 'T/A' ? '#FC8019' : '#E3F2FD', border: `2px solid ${selectedTable === 'T/A' ? '#E64A19' : '#2196F3'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}>
+                  style={{ flex: '1', minWidth: '80px', background: selectedTable === 'T/A' ? '#FC8019' : 'rgba(33,150,243,0.12)', border: `2px solid ${selectedTable === 'T/A' ? '#E64A19' : '#2196F3'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}>
                   <div style={{ fontSize: '18px' }}>{selectedTable === 'T/A' ? '✅' : '📦'}</div>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: selectedTable === 'T/A' ? '#fff' : '#000' }}>T/A</div>
-                  <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'T/A' ? '#fff' : '#2196F3' }}>{selectedTable === 'T/A' ? 'Selected' : 'Takeaway'}</div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>T/A</div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'T/A' ? '#fff' : '#90CAF9' }}>{selectedTable === 'T/A' ? 'Selected' : 'Takeaway'}</div>
                 </div>
               </div>
 
               <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 {categories.map(cat => (
-                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ padding: '8px 16px', borderRadius: '20px', border: selectedCategory === cat ? 'none' : '1.5px solid #ddd', background: selectedCategory === cat ? '#FC8019' : '#fff', color: selectedCategory === cat ? '#fff' : '#333', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}>{cat}</button>
+                  <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ padding: '8px 16px', borderRadius: '20px', border: selectedCategory === cat ? 'none' : '1.5px solid rgba(255,255,255,0.2)', background: selectedCategory === cat ? '#FC8019' : '#122B45', color: selectedCategory === cat ? '#fff' : '#c8e0f4', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}>{cat}</button>
                 ))}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
@@ -1419,7 +1434,7 @@ export default function CafePOS() {
                   const remaining = getRemainingServings(item.name);
                   const lowStock = remaining !== Infinity && remaining < 5;
                   return (
-                    <div key={item.id} onClick={() => addToOrder(item)} style={{ background: '#fff', padding: '16px', borderRadius: '12px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', textAlign: 'center', border: lowStock ? '2px solid #E64A19' : 'none' }}>
+                    <div key={item.id} onClick={() => addToOrder(item)} style={{ background: '#122B45', padding: '16px', borderRadius: '12px', cursor: 'pointer', textAlign: 'center', border: lowStock ? '2px solid #E64A19' : '1px solid rgba(255,255,255,0.08)' }}>
                       <div style={{ fontSize: '36px', marginBottom: '8px' }}>{item.emoji}</div>
                       <div style={{ fontSize: '13px', fontWeight: '700', color: '#000', marginBottom: '4px', minHeight: '36px' }}>{item.name}</div>
                       <div style={{ fontSize: '15px', color: '#E64A19', fontWeight: '800' }}>₹{item.price}</div>
@@ -1432,13 +1447,13 @@ export default function CafePOS() {
               </div>
             </div>
 
-            <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', height: 'fit-content', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+            <div style={{ background: '#122B45', borderRadius: '12px', padding: '20px', height: 'fit-content', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#000' }}>🛒 Current Order ({currentOrder.length})</h3>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#fff' }}>🛒 Current Order ({currentOrder.length})</h3>
                 {selectedTable && <span style={{ background: '#FC8019', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>{selectedTable === 'T/A' ? '📦 Takeaway' : `🪑 Table ${selectedTable}`}</span>}
               </div>
               {selectedTable && selectedTable !== 'T/A' && tableStatus[selectedTable] === 'occupied' && currentOrder.length > 0 && (
-                <div style={{ background: '#FFF3E0', border: '1.5px solid #FC8019', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '12px', fontWeight: '700', color: '#E64A19' }}>
+                <div style={{ background: 'rgba(252,128,25,0.12)', border: '1.5px solid #FC8019', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '12px', fontWeight: '700', color: '#FC8019' }}>
                   ➕ Adding more items to Table {selectedTable} — existing order loaded
                 </div>
               )}
@@ -1452,16 +1467,16 @@ export default function CafePOS() {
                     <div style={{ fontSize: '11px', opacity: 1 }}>📱 {customerData.phone}</div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '10px' }}>
-                    <div style={{ background: '#e8f5e9', padding: '8px', borderRadius: '6px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '10px', color: '#000' }}>Points</div>
+                    <div style={{ background: 'rgba(76,175,80,0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(76,175,80,0.3)' }}>
+                      <div style={{ fontSize: '10px', color: '#c8e0f4' }}>Points</div>
                       <div style={{ fontSize: '16px', fontWeight: '700', color: '#4CAF50' }}>{customerData.loyaltyPoints || 0}</div>
                     </div>
-                    <div style={{ background: '#e3f2fd', padding: '8px', borderRadius: '6px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '10px', color: '#000' }}>Visits</div>
-                      <div style={{ fontSize: '16px', fontWeight: '700', color: '#2196F3' }}>{customerData.totalOrders}</div>
+                    <div style={{ background: 'rgba(33,150,243,0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(33,150,243,0.3)' }}>
+                      <div style={{ fontSize: '10px', color: '#c8e0f4' }}>Visits</div>
+                      <div style={{ fontSize: '16px', fontWeight: '700', color: '#90CAF9' }}>{customerData.totalOrders}</div>
                     </div>
-                    <div style={{ background: '#fff3e0', padding: '8px', borderRadius: '6px', textAlign: 'center' }}>
-                      <div style={{ fontSize: '10px', color: '#000' }}>Spent</div>
+                    <div style={{ background: 'rgba(252,128,25,0.15)', padding: '8px', borderRadius: '6px', textAlign: 'center', border: '1px solid rgba(252,128,25,0.3)' }}>
+                      <div style={{ fontSize: '10px', color: '#c8e0f4' }}>Spent</div>
                       <div style={{ fontSize: '14px', fontWeight: '700', color: '#FC8019' }}>₹{customerData.totalSpent}</div>
                     </div>
                   </div>
@@ -1476,13 +1491,13 @@ export default function CafePOS() {
 
               <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '12px' }}>
                 {currentOrder.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '30px 20px', color: '#000' }}>
+                  <div style={{ textAlign: 'center', padding: '30px 20px', color: '#c8e0f4' }}>
                     <div style={{ fontSize: '48px' }}>🛒</div>
                     <p style={{ fontSize: '13px' }}>No items yet</p>
                   </div>
                 ) : (
                   currentOrder.map(item => (
-                    <div key={item.id} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '8px', marginBottom: '6px', border: '1px solid #e0e0e0' }}>
+                    <div key={item.id} style={{ padding: '10px', background: '#0F2236', borderRadius: '8px', marginBottom: '6px', border: '1px solid rgba(255,255,255,0.08)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                         <span style={{ fontSize: '13px', fontWeight: '800', color: '#000' }}>{item.emoji} {item.name}</span>
                         <button onClick={() => removeFromOrder(item.id)} style={{ background: 'none', border: 'none', color: '#E64A19', cursor: 'pointer', fontSize: '18px', fontWeight: '700' }}>×</button>
@@ -1502,8 +1517,8 @@ export default function CafePOS() {
 
               {currentOrder.length > 0 && (
                 <>
-                  <div style={{ marginBottom: '10px', padding: '10px', background: '#fff9e6', borderRadius: '8px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#000' }}>💰 Manual Discount</label>
+                  <div style={{ marginBottom: '10px', padding: '10px', background: '#0F2236', borderRadius: '8px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#FFD54F' }}>💰 Manual Discount</label>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                       <select value={manualDiscountType} onChange={(e) => setManualDiscountType(e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }}>
                         <option value="flat">₹</option><option value="percent">%</option>
@@ -1511,27 +1526,27 @@ export default function CafePOS() {
                       <input type="number" value={manualDiscountValue} onChange={(e) => setManualDiscountValue(e.target.value)} placeholder="0" style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }} />
                     </div>
                   </div>
-                  <div style={{ marginBottom: '10px', padding: '10px', background: '#e3f2fd', borderRadius: '8px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#000' }}>🎁 Promo Code</label>
+                  <div style={{ marginBottom: '10px', padding: '10px', background: '#0F2236', borderRadius: '8px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#90CAF9' }}>🎁 Promo Code</label>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
                       <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="KF1234" style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '12px' }} />
                       <button onClick={applyPromo} style={{ padding: '6px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' }}>Apply</button>
                     </div>
                   </div>
-                  <div style={{ borderTop: '1px dashed #ddd', paddingTop: '10px', marginBottom: '12px', fontSize: '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#000' }}><span>Subtotal</span><span>₹{subtotal}</span></div>
+                  <div style={{ borderTop: '1px dashed rgba(255,255,255,0.2)', paddingTop: '10px', marginBottom: '12px', fontSize: '12px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#c8e0f4' }}><span>Subtotal</span><span>₹{subtotal}</span></div>
                     {totalDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E64A19' }}><span>Discount</span><span>-₹{totalDiscount.toFixed(0)}</span></div>}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', marginTop: '6px', color: '#000' }}><span>TOTAL</span><span>₹{total.toFixed(0)}</span></div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', marginTop: '6px', color: '#fff' }}><span>TOTAL</span><span>₹{total.toFixed(0)}</span></div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '10px' }}>
                     {['cash', 'card', 'upi', 'split'].map(m => (
-                      <button key={m} onClick={() => { setPaymentMethod(m); setCashReceivedInput(''); setSplitCash(''); setSplitUpi(''); }} style={{ padding: '8px', border: 'none', borderRadius: '6px', background: paymentMethod === m ? '#FC8019' : '#f0f0f0', color: paymentMethod === m ? '#fff' : '#666', fontWeight: '700', cursor: 'pointer', fontSize: '11px', textTransform: 'uppercase' }}>{m === 'split' ? '✂️ Split' : m.toUpperCase()}</button>
+                      <button key={m} onClick={() => { setPaymentMethod(m); setCashReceivedInput(''); setSplitCash(''); setSplitUpi(''); }} style={{ padding: '8px', border: 'none', borderRadius: '6px', background: paymentMethod === m ? '#FC8019' : '#0F2236', color: paymentMethod === m ? '#fff' : '#c8e0f4', fontWeight: '700', cursor: 'pointer', fontSize: '11px', textTransform: 'uppercase' }}>{m === 'split' ? '✂️ Split' : m.toUpperCase()}</button>
                     ))}
                   </div>
                   {/* Change calculator for cash */}
                   {paymentMethod === 'cash' && (
-                    <div style={{ marginBottom: '10px', padding: '10px', background: '#e8f5e9', borderRadius: '8px' }}>
-                      <label style={{ fontSize: '11px', fontWeight: '700', color: '#000' }}>💵 Cash Received</label>
+                    <div style={{ marginBottom: '10px', padding: '10px', background: 'rgba(76,175,80,0.12)', borderRadius: '8px', border: '1px solid rgba(76,175,80,0.3)' }}>
+                      <label style={{ fontSize: '11px', fontWeight: '700', color: '#69F0AE' }}>💵 Cash Received</label>
                       <input type="number" value={cashReceivedInput} onChange={e => setCashReceivedInput(e.target.value)} placeholder={`₹${total.toFixed(0)}`} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #4CAF50', marginTop: '4px', fontSize: '14px', fontWeight: '700', boxSizing: 'border-box' }} />
                       {cashReceivedInput && parseFloat(cashReceivedInput) >= total && (
                         <div style={{ marginTop: '6px', fontSize: '15px', fontWeight: '800', color: '#2E7D32' }}>💰 Change: ₹{(parseFloat(cashReceivedInput) - total).toFixed(0)}</div>
@@ -1543,15 +1558,15 @@ export default function CafePOS() {
                   )}
                   {/* Split payment inputs */}
                   {paymentMethod === 'split' && (
-                    <div style={{ marginBottom: '10px', padding: '10px', background: '#fff3e0', borderRadius: '8px' }}>
-                      <label style={{ fontSize: '11px', fontWeight: '700', color: '#000' }}>✂️ Split Payment (Total: ₹{total.toFixed(0)})</label>
+                    <div style={{ marginBottom: '10px', padding: '10px', background: 'rgba(252,128,25,0.1)', borderRadius: '8px', border: '1px solid rgba(252,128,25,0.3)' }}>
+                      <label style={{ fontSize: '11px', fontWeight: '700', color: '#FC8019' }}>✂️ Split Payment (Total: ₹{total.toFixed(0)})</label>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
                         <div>
-                          <div style={{ fontSize: '10px', fontWeight: '700', color: '#666', marginBottom: '3px' }}>💵 Cash</div>
+                          <div style={{ fontSize: '10px', fontWeight: '700', color: '#c8e0f4', marginBottom: '3px' }}>💵 Cash</div>
                           <input type="number" value={splitCash} onChange={e => { setSplitCash(e.target.value); setSplitUpi((total - parseFloat(e.target.value || 0)).toFixed(0)); }} placeholder="0" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #FC8019', fontSize: '14px', fontWeight: '700', boxSizing: 'border-box' }} />
                         </div>
                         <div>
-                          <div style={{ fontSize: '10px', fontWeight: '700', color: '#666', marginBottom: '3px' }}>📱 UPI</div>
+                          <div style={{ fontSize: '10px', fontWeight: '700', color: '#c8e0f4', marginBottom: '3px' }}>📱 UPI</div>
                           <input type="number" value={splitUpi} onChange={e => { setSplitUpi(e.target.value); setSplitCash((total - parseFloat(e.target.value || 0)).toFixed(0)); }} placeholder="0" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #FC8019', fontSize: '14px', fontWeight: '700', boxSizing: 'border-box' }} />
                         </div>
                       </div>
@@ -1563,7 +1578,7 @@ export default function CafePOS() {
                     </div>
                   )}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
-                    <button onClick={printBill} style={{ padding: '10px', background: '#fff', color: '#FC8019', border: '2px solid #FC8019', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>🖨️ Print</button>
+                    <button onClick={printBill} style={{ padding: '10px', background: '#0F2236', color: '#FC8019', border: '2px solid #FC8019', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>🖨️ Print</button>
                     <button onClick={sendWhatsApp} style={{ padding: '10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>📱 WhatsApp</button>
                   </div>
                   <button onClick={completeOrder} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #4CAF50 0%, #388E3C 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '15px' }}>✅ Complete • ₹{total.toFixed(0)}</button>
@@ -1575,11 +1590,11 @@ export default function CafePOS() {
 
         {activeTab === 'summary' && (
           <div>
-            <div style={{ background: '#e3f2fd', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#0066cc' }}>
-              🔄 <strong>Real-time sync:</strong> All data syncs across all devices instantly!
+            <div style={{ background: 'rgba(33,150,243,0.12)', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#64B5F6', border: '1px solid rgba(33,150,243,0.25)' }}>
+              🔄 <strong style={{ color: '#90CAF9' }}>Real-time sync:</strong> All data syncs across all devices instantly!
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              <h2 style={{ fontSize: '24px', margin: 0, color: '#000' }}>💼 Business Summary</h2>
+              <h2 style={{ fontSize: '24px', margin: 0, color: '#fff' }}>💼 Business Summary</h2>
               <input type="date" value={summaryDate} onChange={(e) => setSummaryDate(e.target.value)} style={{ padding: '10px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', fontWeight: '700' }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
@@ -1605,16 +1620,16 @@ export default function CafePOS() {
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px', marginBottom: '20px' }}>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #E64A19' }}>
-                <div style={{ fontSize: '13px', color: '#000' }}>💸 CASH EXPENSES</div>
+              <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #E64A19' }}>
+                <div style={{ fontSize: '13px', color: '#c8e0f4' }}>💸 CASH EXPENSES</div>
                 <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>-₹{cashExpenses.toFixed(0)}</div>
               </div>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #FF9800' }}>
-                <div style={{ fontSize: '13px', color: '#000' }}>💸 UPI EXPENSES</div>
+              <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #FF9800' }}>
+                <div style={{ fontSize: '13px', color: '#c8e0f4' }}>💸 UPI EXPENSES</div>
                 <div style={{ fontSize: '24px', fontWeight: '700', color: '#FF9800' }}>-₹{upiExpenses.toFixed(0)}</div>
               </div>
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #E64A19' }}>
-                <div style={{ fontSize: '13px', color: '#000' }}>📉 TOTAL EXPENSES</div>
+              <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #E64A19' }}>
+                <div style={{ fontSize: '13px', color: '#c8e0f4' }}>📉 TOTAL EXPENSES</div>
                 <div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>-₹{totalExpenses.toFixed(0)}</div>
               </div>
             </div>
@@ -1631,13 +1646,13 @@ export default function CafePOS() {
               </div>
             </div>
             {selectedDateExpenses.length > 0 && (
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginTop: '20px' }}>
-                <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000' }}>📋 Expenses on {new Date(summaryDate).toLocaleDateString()}</h3>
+              <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginTop: '20px' }}>
+                <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#fff' }}>📋 Expenses on {new Date(summaryDate).toLocaleDateString()}</h3>
                 {selectedDateExpenses.map(e => (
-                  <div key={e.id} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                  <div key={e.id} style={{ padding: '10px', background: '#0F2236', borderRadius: '6px', marginBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
                     <div>
-                      <div style={{ fontSize: '13px', fontWeight: '700' }}>{e.description}</div>
-                      <div style={{ fontSize: '11px', color: '#000' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.time}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>{e.description}</div>
+                      <div style={{ fontSize: '11px', color: '#c8e0f4' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.time}</div>
                     </div>
                     <div style={{ fontSize: '16px', fontWeight: '700', color: '#E64A19' }}>-₹{e.amount}</div>
                   </div>
@@ -1649,9 +1664,9 @@ export default function CafePOS() {
 
         {activeTab === 'expenses' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>💸 Expenses</h2>
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '700' }}>➕ Add Expense</h3>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>💸 Expenses</h2>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '700' }}>➕ Add Expense</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px', marginBottom: '10px' }}>
                 <div><label style={{ fontSize: '11px', color: '#000' }}>Description</label><input placeholder="Milk purchase" value={newExpense.description} onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
                 <div><label style={{ fontSize: '11px', color: '#000' }}>Amount ₹</label><input type="number" placeholder="500" value={newExpense.amount} onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
@@ -1661,23 +1676,23 @@ export default function CafePOS() {
               <button onClick={addExpense} style={{ width: '100%', padding: '12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>💸 Add Expense</button>
             </div>
             {expenses.length === 0 ? (
-              <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', textAlign: 'center', color: '#000' }}><div style={{ fontSize: '48px' }}>💸</div><p>No expenses yet</p></div>
+              <div style={{ background: '#122B45', padding: '40px', borderRadius: '12px', textAlign: 'center', color: '#c8e0f4' }}><div style={{ fontSize: '48px' }}>💸</div><p>No expenses yet</p></div>
             ) : (
               <div>
-                <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
-                  <div style={{ fontSize: '14px', color: '#000' }}>Total Expenses (All Time)</div>
+                <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '14px', color: '#c8e0f4' }}>Total Expenses (All Time)</div>
                   <div style={{ fontSize: '28px', fontWeight: '700', color: '#E64A19' }}>₹{expenses.reduce((s, e) => s + e.amount, 0).toFixed(0)}</div>
                 </div>
                 <div style={{ display: 'grid', gap: '8px' }}>
                   {expenses.slice().reverse().map(e => (
-                    <div key={e.id} style={{ background: '#fff', padding: '14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div key={e.id} style={{ background: '#122B45', padding: '14px', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <div style={{ fontSize: '14px', fontWeight: '700' }}>{e.description}</div>
-                        <div style={{ fontSize: '11px', color: '#000' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.date} • {e.time}</div>
+                        <div style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>{e.description}</div>
+                        <div style={{ fontSize: '11px', color: '#c8e0f4' }}>{e.category} • {e.paidBy.toUpperCase()} • {e.date} • {e.time}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <div style={{ fontSize: '18px', fontWeight: '700', color: '#E64A19' }}>-₹{e.amount}</div>
-                        <button onClick={() => deleteExpense(e.id)} style={{ padding: '6px 10px', background: '#fff', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
+                        <button onClick={() => deleteExpense(e.id)} style={{ padding: '6px 10px', background: '#0F2236', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>🗑️</button>
                       </div>
                     </div>
                   ))}
@@ -1690,7 +1705,7 @@ export default function CafePOS() {
         {activeTab === 'inventory' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              <h2 style={{ fontSize: '24px', margin: 0 }}>📦 Inventory</h2>
+              <h2 style={{ fontSize: '24px', margin: 0, color: '#fff' }}>📦 Inventory</h2>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button onClick={quickAddCommonItems} style={{ padding: '10px 16px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>⚡ Quick Add Common Items</button>
                 <button onClick={resetInventoryToDefault} style={{ padding: '10px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>🔄 Reset to Kaapfi Default</button>
@@ -1698,16 +1713,16 @@ export default function CafePOS() {
             </div>
 
             {inventory.length === 0 && (
-              <div style={{ background: '#fff3e0', padding: '20px', borderRadius: '12px', marginBottom: '20px', textAlign: 'center' }}>
+              <div style={{ background: 'rgba(230,74,25,0.1)', padding: '20px', borderRadius: '12px', marginBottom: '20px', textAlign: 'center', border: '1px solid rgba(230,74,25,0.3)' }}>
                 <div style={{ fontSize: '48px' }}>📦</div>
-                <h3 style={{ margin: '8px 0', color: '#E64A19' }}>No inventory items yet!</h3>
-                <p style={{ fontSize: '13px', color: '#000', marginBottom: '12px' }}>Click "Quick Add Common Items" above to load default Kaapfi inventory (Coffee, Milk, Paneer, etc.)</p>
+                <h3 style={{ margin: '8px 0', color: '#FC8019' }}>No inventory items yet!</h3>
+                <p style={{ fontSize: '13px', color: '#c8e0f4', marginBottom: '12px' }}>Click "Quick Add Common Items" above to load default Kaapfi inventory (Coffee, Milk, Paneer, etc.)</p>
                 <button onClick={quickAddCommonItems} style={{ padding: '12px 24px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>⚡ Load Default Inventory Now</button>
               </div>
             )}
 
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '700' }}>➕ Add Ingredient</h3>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '700' }}>➕ Add Ingredient</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '8px', marginBottom: '10px' }}>
                 <div><label style={{ fontSize: '11px', color: '#000' }}>Name</label><input placeholder="Cheese" value={newInventoryItem.name} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, name: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
                 <div><label style={{ fontSize: '11px', color: '#000' }}>Quantity</label><input type="number" placeholder="2000" value={newInventoryItem.quantity} onChange={(e) => setNewInventoryItem({ ...newInventoryItem, quantity: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
@@ -1716,15 +1731,15 @@ export default function CafePOS() {
               </div>
               <button onClick={addInventoryItem} style={{ width: '100%', padding: '12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📦 Add</button>
             </div>
-            <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}>
-              <div><div style={{ fontSize: '13px', color: '#000' }}>Total Items</div><div style={{ fontSize: '24px', fontWeight: '700' }}>{inventory.length}</div></div>
-              <div><div style={{ fontSize: '13px', color: '#000' }}>Low Stock</div><div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>{inventory.filter(i => i.quantity < i.threshold).length}</div></div>
+            <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between' }}>
+              <div><div style={{ fontSize: '13px', color: '#c8e0f4' }}>Total Items</div><div style={{ fontSize: '24px', fontWeight: '700', color: '#fff' }}>{inventory.length}</div></div>
+              <div><div style={{ fontSize: '13px', color: '#c8e0f4' }}>Low Stock</div><div style={{ fontSize: '24px', fontWeight: '700', color: '#E64A19' }}>{inventory.filter(i => i.quantity < i.threshold).length}</div></div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
               {inventory.map(item => {
                 const isLow = item.quantity < item.threshold;
                 return (
-                  <div key={item.id} style={{ background: isLow ? '#ffebee' : '#fff', padding: '16px', borderRadius: '12px', border: isLow ? '2px solid #E64A19' : '1px solid #e0e0e0' }}>
+                  <div key={item.id} style={{ background: isLow ? 'rgba(198,40,40,0.2)' : '#122B45', padding: '16px', borderRadius: '12px', border: isLow ? '2px solid #E64A19' : '1px solid rgba(255,255,255,0.1)' }}>
                     {editingInventoryItem && editingInventoryItem.id === item.id ? (
                       <div>
                         <input value={editingInventoryItem.name} onChange={(e) => setEditingInventoryItem({ ...editingInventoryItem, name: e.target.value })} style={{ width: '100%', padding: '6px', marginBottom: '4px', boxSizing: 'border-box' }} />
@@ -1740,16 +1755,16 @@ export default function CafePOS() {
                     ) : (
                       <>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#000' }}>{item.name}</div>
+                          <div style={{ fontSize: '15px', fontWeight: '700', color: '#fff' }}>{item.name}</div>
                           {isLow && <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 8px', borderRadius: '10px' }}>LOW</span>}
                         </div>
-                        <div style={{ fontSize: '28px', fontWeight: '700', color: isLow ? '#E64A19' : '#4CAF50' }}>{item.quantity} <span style={{ fontSize: '14px', color: '#000' }}>{item.unit}</span></div>
-                        <div style={{ fontSize: '11px', color: '#000' }}>Alert below: {item.threshold}{item.unit}</div>
+                        <div style={{ fontSize: '28px', fontWeight: '700', color: isLow ? '#E64A19' : '#4CAF50' }}>{item.quantity} <span style={{ fontSize: '14px', color: '#c8e0f4' }}>{item.unit}</span></div>
+                        <div style={{ fontSize: '11px', color: '#c8e0f4' }}>Alert below: {item.threshold}{item.unit}</div>
                         <div style={{ display: 'flex', gap: '4px', marginTop: '10px' }}>
-                          <button onClick={() => adjustInventoryQuantity(item.id, -100)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>-100</button>
-                          <button onClick={() => adjustInventoryQuantity(item.id, -10)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>-10</button>
-                          <button onClick={() => adjustInventoryQuantity(item.id, 10)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>+10</button>
-                          <button onClick={() => adjustInventoryQuantity(item.id, 100)} style={{ flex: 1, padding: '6px', background: '#fff', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>+100</button>
+                          <button onClick={() => adjustInventoryQuantity(item.id, -100)} style={{ flex: 1, padding: '6px', background: '#0F2236', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>-100</button>
+                          <button onClick={() => adjustInventoryQuantity(item.id, -10)} style={{ flex: 1, padding: '6px', background: '#0F2236', color: '#E64A19', border: '1px solid #E64A19', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>-10</button>
+                          <button onClick={() => adjustInventoryQuantity(item.id, 10)} style={{ flex: 1, padding: '6px', background: '#0F2236', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>+10</button>
+                          <button onClick={() => adjustInventoryQuantity(item.id, 100)} style={{ flex: 1, padding: '6px', background: '#0F2236', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>+100</button>
                         </div>
                         <div style={{ display: 'flex', gap: '4px', marginTop: '6px' }}>
                           <button onClick={() => setEditingInventoryItem({ ...item })} style={{ flex: 1, padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>Edit</button>
@@ -1766,50 +1781,65 @@ export default function CafePOS() {
 
         {activeTab === 'sops' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>📋 Recipe SOPs</h2>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '900' }}>📋 Recipe SOPs</h2>
             {editingSOP ? (
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
-                <h3 style={{ fontSize: '18px', margin: '0 0 12px', color: '#FC8019' }}>✏️ {editingSOP}</h3>
-                {sopEditing.map((row, index) => (
-                  <div key={index} style={{ display: 'grid', gridTemplateColumns: '1fr 100px auto 30px', gap: '8px', marginBottom: '8px', alignItems: 'center' }}>
-                    <select value={row.ingredient} onChange={(e) => updateSOPRow(index, 'ingredient', e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px', color: '#000', fontWeight: '600' }}>
-                      <option value="">-- Select --</option>
-                      {inventory.map(inv => <option key={inv.id} value={inv.name}>{inv.name} ({inv.unit})</option>)}
-                    </select>
-                    <input type="number" placeholder="Qty" value={row.quantity} onChange={(e) => updateSOPRow(index, 'quantity', e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px', color: '#000', fontWeight: '600' }} />
-                    <div style={{ fontSize: '12px', color: '#000' }}>{inventory.find(i => i.name === row.ingredient)?.unit || ''}</div>
-                    <button onClick={() => removeSOPRow(index)} style={{ padding: '8px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>×</button>
+              <div style={{ background: '#122B45', padding: '24px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.12)' }}>
+                <h3 style={{ fontSize: '20px', margin: '0 0 16px', color: '#FC8019', fontWeight: '900' }}>✏️ {editingSOP}</h3>
+                <div style={{ background: '#0F2236', borderRadius: '8px', padding: '4px', marginBottom: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 60px 36px', gap: '8px', padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div style={{ fontSize: '11px', fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '1px' }}>Ingredient</div>
+                    <div style={{ fontSize: '11px', fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '1px' }}>Qty</div>
+                    <div style={{ fontSize: '11px', fontWeight: '800', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '1px' }}>Unit</div>
+                    <div></div>
                   </div>
-                ))}
-                <button onClick={addSOPRow} style={{ padding: '10px 16px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', marginRight: '8px', marginTop: '8px' }}>+ Add</button>
-                <button onClick={saveSOP} style={{ padding: '10px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', marginRight: '8px' }}>✅ Save</button>
-                <button onClick={() => { setEditingSOP(null); setSopEditing([]); }} style={{ padding: '10px 16px', background: '#999', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Cancel</button>
+                  {sopEditing.map((row, index) => (
+                    <div key={index} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 60px 36px', gap: '8px', padding: '8px 10px', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <select value={row.ingredient} onChange={(e) => updateSOPRow(index, 'ingredient', e.target.value)} style={{ padding: '8px 10px', background: '#1a3a5c', border: '1.5px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontWeight: '700', fontSize: '13px' }}>
+                        <option value="">— Select —</option>
+                        {inventory.map(inv => <option key={inv.id} value={inv.name}>{inv.name} ({inv.unit})</option>)}
+                      </select>
+                      <input type="number" placeholder="Qty" value={row.quantity} onChange={(e) => updateSOPRow(index, 'quantity', e.target.value)} style={{ padding: '8px 10px', background: '#1a3a5c', border: '1.5px solid rgba(255,255,255,0.15)', borderRadius: '6px', color: '#fff', fontWeight: '700', fontSize: '13px' }} />
+                      <div style={{ fontSize: '13px', color: '#FFD54F', fontWeight: '800' }}>{inventory.find(i => i.name === row.ingredient)?.unit || '—'}</div>
+                      <button onClick={() => removeSOPRow(index)} style={{ padding: '8px', background: '#c62828', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '900', fontSize: '14px' }}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button onClick={addSOPRow} style={{ padding: '10px 18px', background: '#1a3a5c', color: '#fff', border: '1.5px solid rgba(255,255,255,0.2)', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '13px' }}>+ Add Row</button>
+                  <button onClick={saveSOP} style={{ padding: '10px 18px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '900', fontSize: '13px' }}>✅ Save SOP</button>
+                  <button onClick={() => { setEditingSOP(null); setSopEditing([]); }} style={{ padding: '10px 18px', background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>Cancel</button>
+                </div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '14px' }}>
                 {menuItems.map(item => {
                   const sop = menuSOPs[item.name] || [];
                   const hasSOP = sop.length > 0;
                   return (
-                    <div key={item.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: hasSOP ? '2px solid #4CAF50' : '2px solid #ffcdd2' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '24px' }}>{item.emoji}</span>
+                    <div key={item.id} style={{ background: '#122B45', padding: '18px', borderRadius: '14px', border: hasSOP ? '2px solid rgba(76,175,80,0.6)' : '2px solid rgba(230,74,25,0.4)', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ fontSize: '28px', lineHeight: '1' }}>{item.emoji}</div>
                           <div>
-                            <div style={{ fontSize: '14px', fontWeight: '700', color: '#000' }}>{item.name}</div>
-                            <div style={{ fontSize: '11px', color: '#000' }}>₹{item.price}</div>
+                            <div style={{ fontSize: '15px', fontWeight: '900', color: '#fff' }}>{item.name}</div>
+                            <div style={{ fontSize: '12px', color: '#FFD54F', fontWeight: '800', marginTop: '2px' }}>₹{item.price}</div>
                           </div>
                         </div>
-                        {hasSOP ? <span style={{ fontSize: '10px', background: '#4CAF50', color: '#fff', padding: '2px 8px', borderRadius: '10px' }}>✓ SOP</span> : <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 8px', borderRadius: '10px' }}>NO SOP</span>}
+                        {hasSOP
+                          ? <span style={{ fontSize: '10px', background: '#1B5E20', color: '#fff', padding: '3px 10px', borderRadius: '10px', fontWeight: '900', flexShrink: 0 }}>✓ SOP SET</span>
+                          : <span style={{ fontSize: '10px', background: '#B71C1C', color: '#fff', padding: '3px 10px', borderRadius: '10px', fontWeight: '900', flexShrink: 0 }}>NO SOP</span>}
                       </div>
                       {hasSOP && (
-                        <div style={{ background: '#f9f9f9', padding: '10px', borderRadius: '6px', marginBottom: '8px' }}>
+                        <div style={{ background: '#0F2236', padding: '12px', borderRadius: '8px', marginBottom: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
                           {sop.map((row, i) => (
-                            <div key={i} style={{ fontSize: '12px', marginBottom: '2px' }}>• {row.ingredient}: <strong>{row.quantity}{inventory.find(inv => inv.name === row.ingredient)?.unit || ''}</strong></div>
+                            <div key={i} style={{ fontSize: '13px', fontWeight: '700', color: '#c8e0f4', marginBottom: '4px', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>→ {row.ingredient}</span>
+                              <span style={{ color: '#FFD54F', fontWeight: '900' }}>{row.quantity}{inventory.find(inv => inv.name === row.ingredient)?.unit || ''}</span>
+                            </div>
                           ))}
                         </div>
                       )}
-                      <button onClick={() => openSOPEditor(item.name)} style={{ width: '100%', padding: '8px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '12px' }}>{hasSOP ? '✏️ Edit' : '➕ Create'}</button>
+                      <button onClick={() => openSOPEditor(item.name)} style={{ width: '100%', padding: '10px', background: hasSOP ? 'rgba(252,128,25,0.2)' : '#FC8019', color: hasSOP ? '#FC8019' : '#fff', border: hasSOP ? '1.5px solid #FC8019' : 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '900', fontSize: '13px' }}>{hasSOP ? '✏️ Edit SOP' : '➕ Create SOP'}</button>
                     </div>
                   );
                 })}
@@ -1820,61 +1850,77 @@ export default function CafePOS() {
 
         {activeTab === 'kitchen' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>👨‍🍳 Kitchen</h2>
-            <div style={{ display: 'grid', gap: '12px' }}>
+            <h2 style={{ fontSize: '26px', margin: '0 0 20px', color: '#fff', fontWeight: '900', letterSpacing: '-0.5px' }}>👨‍🍳 Kitchen Display</h2>
+            <div style={{ display: 'grid', gap: '16px' }}>
               {todayOrders.filter(o => (o.status || 'in_progress') !== 'delivered').map(order => {
                 const startTime = order.startTime || new Date(order.timestamp).getTime();
                 const elapsed = Math.floor((Date.now() - startTime) / 60000);
                 const isLate = elapsed > 10;
+                const statusColor = order.status === 'ready' ? '#1B5E20' : order.status === 'in_progress' ? '#E65100' : '#1a2e4a';
                 return (
-                  <div key={order.id} style={{ background: '#fff', padding: '18px', borderRadius: '14px', border: isLate ? '3px solid #E64A19' : order.source === 'public_menu' ? '3px solid #FF9800' : '2px solid #e0e0e0', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div key={order.id} style={{ background: '#122B45', padding: '20px', borderRadius: '16px', border: isLate ? '3px solid #E64A19' : order.source === 'public_menu' ? '3px solid #FF9800' : '2px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>
+                    {/* Order Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
                       <div>
-                        <div style={{ fontWeight: '900', color: '#000', fontSize: '16px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                          #{order.id.toString().slice(-5)} • {order.customerName}
-                          {order.source === 'public_menu' && <span style={{ fontSize: '10px', background: '#e3f2fd', color: '#1565C0', padding: '2px 7px', borderRadius: '10px' }}>🌐 Online</span>}
-                          {order.tableNumber && <span style={{ fontSize: '10px', background: '#f3e5f5', color: '#6A1B9A', padding: '2px 7px', borderRadius: '10px' }}>{order.tableNumber === 'T/A' ? '📦 T/A' : `🪑 T${order.tableNumber}`}</span>}
+                        <div style={{ fontWeight: '900', color: '#fff', fontSize: '18px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px' }}>
+                          <span style={{ color: '#FC8019' }}>#{order.id.toString().slice(-5)}</span>
+                          <span>•</span>
+                          <span>{order.customerName}</span>
+                          {order.source === 'public_menu' && <span style={{ fontSize: '11px', background: 'rgba(33,150,243,0.25)', color: '#90CAF9', padding: '3px 9px', borderRadius: '10px', fontWeight: '800', border: '1px solid rgba(33,150,243,0.4)' }}>🌐 QR Order</span>}
+                          {order.tableNumber && <span style={{ fontSize: '12px', background: 'rgba(156,39,176,0.3)', color: '#CE93D8', padding: '3px 10px', borderRadius: '10px', fontWeight: '900', border: '1px solid rgba(156,39,176,0.4)' }}>{order.tableNumber === 'T/A' ? '📦 T/A' : `🪑 Table ${order.tableNumber}`}</span>}
                         </div>
-                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           {order.paymentStatus === 'paid'
-                            ? <span style={{ fontSize: '11px', background: '#1B5E20', color: '#fff', padding: '3px 10px', borderRadius: '10px', fontWeight: '800' }}>✅ PAID</span>
+                            ? <span style={{ fontSize: '12px', background: '#1B5E20', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>✅ PAID</span>
                             : order.paymentStatus === 'partial'
-                            ? <><span style={{ fontSize: '11px', background: '#F57F17', color: '#fff', padding: '3px 10px', borderRadius: '10px', fontWeight: '800' }}>⚡ PARTIAL</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '10px', background: '#FFF3E0', color: '#E64A19', border: '1px solid #FC8019', padding: '2px 8px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>Mark Paid</button></>
-                            : <><span style={{ fontSize: '11px', background: '#B71C1C', color: '#fff', padding: '3px 10px', borderRadius: '10px', fontWeight: '800' }}>🔴 PAY PENDING</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '10px', background: '#FFF3E0', color: '#E64A19', border: '1px solid #FC8019', padding: '2px 8px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>Mark Paid</button></>
+                            ? <><span style={{ fontSize: '12px', background: '#F57F17', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>⚡ PARTIAL</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '11px', background: 'rgba(252,128,25,0.2)', color: '#FC8019', border: '1px solid #FC8019', padding: '3px 10px', borderRadius: '8px', fontWeight: '800', cursor: 'pointer' }}>Mark Paid</button></>
+                            : <><span style={{ fontSize: '12px', background: '#B71C1C', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>🔴 PAYMENT PENDING</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '11px', background: 'rgba(252,128,25,0.2)', color: '#FC8019', border: '1px solid #FC8019', padding: '3px 10px', borderRadius: '8px', fontWeight: '800', cursor: 'pointer' }}>Mark Paid</button></>
                           }
                         </div>
                       </div>
-                      <div style={{ background: isLate ? '#E64A19' : '#4CAF50', color: '#fff', padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '700' }}>⏱️ {elapsed} min</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+                        <div style={{ background: isLate ? '#B71C1C' : elapsed > 5 ? '#E65100' : '#1B5E20', color: '#fff', padding: '6px 14px', borderRadius: '20px', fontSize: '14px', fontWeight: '900' }}>⏱ {elapsed} min</div>
+                        {isLate && <div style={{ fontSize: '11px', color: '#FF5252', fontWeight: '800' }}>⚠️ OVERDUE</div>}
+                      </div>
                     </div>
+                    {/* Items */}
                     {order.items.map(item => {
                       const sop = menuSOPs[item.name] || [];
                       return (
-                        <div key={item.id} style={{ background: '#fff3e0', padding: '14px', borderRadius: '10px', marginBottom: '8px', border: '1px solid #FFE0B2' }}>
-                          <div style={{ fontSize: '17px', fontWeight: '900', color: '#BF360C', marginBottom: '8px' }}>{item.emoji} {item.name} <span style={{ background: '#E64A19', color: '#fff', borderRadius: '6px', padding: '2px 8px', fontSize: '14px' }}>×{item.quantity}</span></div>
+                        <div key={item.id} style={{ background: '#0F2236', padding: '14px', borderRadius: '10px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                          <div style={{ fontSize: '18px', fontWeight: '900', color: '#fff', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>{item.emoji} {item.name}</span>
+                            <span style={{ background: '#FC8019', color: '#fff', borderRadius: '8px', padding: '3px 12px', fontSize: '16px', fontWeight: '900' }}>×{item.quantity}</span>
+                          </div>
                           {sop.length > 0 ? (
-                            <div style={{ paddingLeft: '12px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', paddingLeft: '4px' }}>
                               {sop.map((row, i) => {
                                 const unit = inventory.find(inv => inv.name === row.ingredient)?.unit || '';
-                                return <div key={i} style={{ fontSize: '13px', marginBottom: '3px', color: '#1a1a1a', fontWeight: '700' }}>→ {row.ingredient}: <strong style={{ color: '#000' }}>{row.quantity * item.quantity}{unit}</strong></div>;
+                                return <div key={i} style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '700', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', padding: '5px 10px' }}>→ {row.ingredient}: <span style={{ color: '#FFD54F', fontWeight: '900' }}>{row.quantity * item.quantity}{unit}</span></div>;
                               })}
                             </div>
-                          ) : <div style={{ fontSize: '12px', color: '#555', paddingLeft: '12px', fontWeight: '600' }}>No recipe set</div>}
+                          ) : <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', paddingLeft: '4px', fontWeight: '600' }}>No recipe set</div>}
                         </div>
                       );
                     })}
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap' }}>
+                    {/* Action Buttons */}
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
                       {order.status === 'pending_acceptance' && (
-                        <button onClick={() => { setEditingOrderId(order.id); setEditingOrderItems([...(order.items || [])]); }} style={{ padding: '8px 12px', background: '#fff3e0', color: '#E64A19', border: '1px solid #FC8019', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>✏️ Modify Cart</button>
+                        <button onClick={() => { setEditingOrderId(order.id); setEditingOrderItems([...(order.items || [])]); }} style={{ padding: '10px 16px', background: 'rgba(252,128,25,0.2)', color: '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>✏️ Modify</button>
                       )}
-                      <button onClick={() => updateOrderStatus(order.id, 'in_progress')} style={{ padding: '8px 12px', background: order.status === 'in_progress' ? '#FF9800' : '#f0f0f0', color: order.status === 'in_progress' ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>🔥 Progress</button>
-                      <button onClick={() => updateOrderStatus(order.id, 'ready')} style={{ padding: '8px 12px', background: order.status === 'ready' ? '#4CAF50' : '#f0f0f0', color: order.status === 'ready' ? '#fff' : '#666', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>✅ Ready</button>
-                      <button onClick={() => updateOrderStatus(order.id, 'delivered')} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>📦 Done</button>
+                      <button onClick={() => updateOrderStatus(order.id, 'in_progress')} style={{ padding: '10px 16px', background: order.status === 'in_progress' ? '#E65100' : 'rgba(255,255,255,0.08)', color: '#fff', border: order.status === 'in_progress' ? 'none' : '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>🔥 In Progress</button>
+                      <button onClick={() => updateOrderStatus(order.id, 'ready')} style={{ padding: '10px 16px', background: order.status === 'ready' ? '#2E7D32' : 'rgba(255,255,255,0.08)', color: '#fff', border: order.status === 'ready' ? 'none' : '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>✅ Ready</button>
+                      <button onClick={() => updateOrderStatus(order.id, 'delivered')} style={{ padding: '10px 16px', background: '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>📦 Delivered</button>
                     </div>
                   </div>
                 );
               })}
               {todayOrders.filter(o => (o.status || 'in_progress') !== 'delivered').length === 0 && (
-                <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#000' }}><div style={{ fontSize: '64px' }}>🎉</div><p>All done!</p></div>
+                <div style={{ background: '#122B45', padding: '60px', borderRadius: '16px', textAlign: 'center', border: '2px solid rgba(76,175,80,0.4)' }}>
+                  <div style={{ fontSize: '64px', marginBottom: '12px' }}>🎉</div>
+                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff' }}>All Orders Done!</div>
+                  <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginTop: '6px' }}>Kitchen is clear</div>
+                </div>
               )}
             </div>
           </div>
@@ -1882,9 +1928,9 @@ export default function CafePOS() {
 
         {activeTab === 'bills' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>🧾 Today's Orders</h2>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>🧾 Today's Orders</h2>
             {todayOrders.length > 0 && (
-              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <input type="checkbox" checked={selectedBills.length === todayOrders.length} onChange={selectAllBills} style={{ width: '18px', height: '18px' }} />
                   <span style={{ fontSize: '13px', fontWeight: '700' }}>Select All ({selectedBills.length}/{todayOrders.length})</span>
@@ -1898,27 +1944,27 @@ export default function CafePOS() {
                 </div>
               </div>
             )}
-            {todayOrders.length === 0 ? <div style={{ background: '#fff', padding: '60px', borderRadius: '12px', textAlign: 'center' }}>📭 No orders yet</div> : (
+            {todayOrders.length === 0 ? <div style={{ background: '#122B45', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#c8e0f4' }}>📭 No orders yet</div> : (
               <div style={{ display: 'grid', gap: '12px' }}>
                 {todayOrders.slice().reverse().map(order => {
                   const isPaid = order.paymentStatus === 'paid';
                   const isPublic = order.source === 'public_menu';
                   return (
-                  <div key={order.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', display: 'flex', gap: '12px', border: selectedBills.includes(order.id) ? '2px solid #FC8019' : isPublic && !isPaid ? '2px solid #FF9800' : '2px solid transparent' }}>
+                  <div key={order.id} style={{ background: '#122B45', padding: '16px', borderRadius: '12px', display: 'flex', gap: '12px', border: selectedBills.includes(order.id) ? '2px solid #FC8019' : isPublic && !isPaid ? '2px solid #FF9800' : '1px solid rgba(255,255,255,0.08)' }}>
                     <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleBill(order.id)} style={{ width: '20px', height: '20px', marginTop: '4px' }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
                         <div>
-                          <div style={{ fontWeight: '700', color: '#000', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <div style={{ fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                             #{order.id.toString().slice(-5)}
-                            {isPublic && <span style={{ fontSize: '10px', background: '#e3f2fd', color: '#1565C0', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>🌐 Online</span>}
-                            {order.tableNumber && <span style={{ fontSize: '10px', background: '#f3e5f5', color: '#6A1B9A', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{order.tableNumber === 'T/A' ? '📦 Takeaway' : `🪑 Table ${order.tableNumber}`}</span>}
+                            {isPublic && <span style={{ fontSize: '10px', background: 'rgba(21,101,192,0.4)', color: '#90CAF9', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>🌐 Online</span>}
+                            {order.tableNumber && <span style={{ fontSize: '10px', background: 'rgba(106,27,154,0.4)', color: '#CE93D8', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{order.tableNumber === 'T/A' ? '📦 Takeaway' : `🪑 Table ${order.tableNumber}`}</span>}
                           </div>
-                          <div style={{ fontSize: '12px', color: '#000', marginTop: '4px' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
+                          <div style={{ fontSize: '12px', color: '#c8e0f4', marginTop: '4px' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019' }}>₹{order.total?.toFixed(0)}</div>
-                          <div style={{ fontSize: '11px', color: '#000', textTransform: 'uppercase' }}>{order.paymentMethod}</div>
+                          <div style={{ fontSize: '11px', color: '#c8e0f4', textTransform: 'uppercase' }}>{order.paymentMethod}</div>
                           <div style={{ marginTop: '4px' }}>
                             {isPaid
                               ? <span style={{ fontSize: '11px', background: '#e8f5e9', color: '#2E7D32', padding: '3px 10px', borderRadius: '10px', fontWeight: '700' }}>✅ Paid</span>
@@ -1927,8 +1973,8 @@ export default function CafePOS() {
                           </div>
                         </div>
                       </div>
-                      <div style={{ fontSize: '12px', color: '#000', margin: '8px 0' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
-                      <button onClick={() => downloadSingleBill(order)} style={{ padding: '6px 12px', background: '#fff', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>📥 CSV</button>
+                      <div style={{ fontSize: '12px', color: '#c8e0f4', margin: '8px 0' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
+                      <button onClick={() => downloadSingleBill(order)} style={{ padding: '6px 12px', background: '#0F2236', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>📥 CSV</button>
                     </div>
                   </div>
                   );
@@ -1940,17 +1986,17 @@ export default function CafePOS() {
 
         {activeTab === 'reports' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>📊 Reports</h2>
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '700' }}>📥 Date Range</h3>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>📊 Reports</h2>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '700' }}>📥 Date Range</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
                 <div><label style={{ fontSize: '11px', color: '#000' }}>From</label><input type="date" value={csvStartDate} onChange={(e) => setCsvStartDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
                 <div><label style={{ fontSize: '11px', color: '#000' }}>To</label><input type="date" value={csvEndDate} onChange={(e) => setCsvEndDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
                 <button onClick={downloadByDateRange} style={{ padding: '10px 20px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📥 Download</button>
               </div>
             </div>
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '700' }}>📱 By Phone</h3>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '700' }}>📱 By Phone</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px' }}>
                 <input type="tel" placeholder="Phone" value={csvPhone} onChange={(e) => setCsvPhone(e.target.value)} style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '6px', color: '#000', fontWeight: '600' }} />
                 <button onClick={downloadByPhone} style={{ padding: '10px 20px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📥 Download</button>
@@ -1962,20 +2008,20 @@ export default function CafePOS() {
         {activeTab === 'menu' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              <h2 style={{ fontSize: '24px', margin: 0 }}>🍽️ Menu</h2>
+              <h2 style={{ fontSize: '24px', margin: 0, color: '#fff' }}>🍽️ Menu</h2>
               <button onClick={resetMenuToDefault} style={{ padding: '10px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700' }}>🔄 Reset</button>
             </div>
             {/* ── CATEGORY MANAGER (Feature 14) ── */}
-            <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', border: '2px solid #FC8019' }}>
-              <div style={{ fontSize: '15px', fontWeight: '800', marginBottom: '10px', color: '#E64A19' }}>📂 Category Manager</div>
+            <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px', marginBottom: '16px', border: '2px solid #FC8019' }}>
+              <div style={{ fontSize: '15px', fontWeight: '800', marginBottom: '10px', color: '#FC8019' }}>📂 Category Manager</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', marginBottom: '12px' }}>
                 {customCategories.map(cat => (
-                  <span key={cat} style={{ background: '#fff3e0', border: '1.5px solid #FC8019', borderRadius: '20px', padding: '5px 12px', fontSize: '12px', fontWeight: '800', color: '#E64A19', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span key={cat} style={{ background: 'rgba(252,128,25,0.15)', border: '1.5px solid #FC8019', borderRadius: '20px', padding: '5px 12px', fontSize: '12px', fontWeight: '800', color: '#FC8019', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                     {cat}
-                    <button onClick={() => { const u = customCategories.filter(c => c !== cat); setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); }} style={{ background: 'none', border: 'none', color: '#E64A19', cursor: 'pointer', fontWeight: '900', fontSize: '15px', padding: '0', lineHeight: '1' }}>×</button>
+                    <button onClick={() => { const u = customCategories.filter(c => c !== cat); setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); }} style={{ background: 'none', border: 'none', color: '#FC8019', cursor: 'pointer', fontWeight: '900', fontSize: '15px', padding: '0', lineHeight: '1' }}>×</button>
                   </span>
                 ))}
-                {customCategories.length === 0 && <span style={{ fontSize: '12px', color: '#999', fontWeight: '600' }}>No categories yet — add below</span>}
+                {customCategories.length === 0 && <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: '600' }}>No categories yet — add below</span>}
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <input placeholder="New category (e.g. Tea, Snacks, Desserts)..." value={newCategoryInput} onChange={e => setNewCategoryInput(e.target.value)} onKeyPress={e => { if (e.key !== 'Enter') return; const v = newCategoryInput.trim(); if (!v || customCategories.includes(v)) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); setNewCategoryInput(''); }} style={{ flex: 1, padding: '9px 12px', border: '1.5px solid #FC8019', borderRadius: '8px', fontSize: '13px', fontWeight: '700', color: '#000' }} />
@@ -1983,8 +2029,8 @@ export default function CafePOS() {
               </div>
             </div>
 
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>➕ Add Item</h3>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>➕ Add Item</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '8px' }}>
                 <input placeholder="Item Name" value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} style={{ padding: '10px', border: '1.5px solid #ddd', borderRadius: '6px', color: '#000', fontWeight: '700', fontSize: '13px' }} />
                 <input placeholder="Price ₹" type="number" value={newItem.price} onChange={(e) => setNewItem({ ...newItem, price: e.target.value })} style={{ padding: '10px', border: '1.5px solid #ddd', borderRadius: '6px', color: '#000', fontWeight: '700', fontSize: '13px' }} />
@@ -1997,17 +2043,17 @@ export default function CafePOS() {
               </div>
             </div>
             {menuItems.length > 0 && (
-              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <input type="checkbox" checked={selectedMenuItems.length === menuItems.length} onChange={selectAllMenu} style={{ width: '18px', height: '18px' }} />
-                  <span style={{ fontSize: '13px', fontWeight: '700' }}>Select All ({selectedMenuItems.length}/{menuItems.length})</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>Select All ({selectedMenuItems.length}/{menuItems.length})</span>
                 </label>
                 {selectedMenuItems.length > 0 && <button onClick={() => setShowDeletePassword('menu')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️ Delete ({selectedMenuItems.length})</button>}
               </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
               {menuItems.map(item => (
-                <div key={item.id} style={{ background: '#fff', padding: '16px', borderRadius: '12px', border: selectedMenuItems.includes(item.id) ? '2px solid #FC8019' : '2px solid transparent', display: 'flex', gap: '12px' }}>
+                <div key={item.id} style={{ background: '#122B45', padding: '16px', borderRadius: '12px', border: selectedMenuItems.includes(item.id) ? '2px solid #FC8019' : '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '12px' }}>
                   <input type="checkbox" checked={selectedMenuItems.includes(item.id)} onChange={() => toggleMenuItem(item.id)} style={{ width: '18px', height: '18px', marginTop: '12px' }} />
                   <div style={{ flex: 1 }}>
                     {editingItem && editingItem.id === item.id ? (
@@ -2024,10 +2070,10 @@ export default function CafePOS() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <div style={{ fontSize: '28px', opacity: item.outOfStock ? 0.4 : 1 }}>{item.emoji}</div>
                           <div>
-                            <div style={{ fontWeight: '700', fontSize: '13px', color: item.outOfStock ? '#999' : '#000' }}>
-                              {item.name} {item.outOfStock && <span style={{ fontSize: '10px', background: '#ffebee', color: '#c62828', padding: '1px 6px', borderRadius: '6px', fontWeight: '800' }}>OUT OF STOCK</span>}
+                            <div style={{ fontWeight: '700', fontSize: '13px', color: item.outOfStock ? 'rgba(255,255,255,0.4)' : '#fff' }}>
+                              {item.name} {item.outOfStock && <span style={{ fontSize: '10px', background: 'rgba(198,40,40,0.3)', color: '#EF9A9A', padding: '1px 6px', borderRadius: '6px', fontWeight: '800' }}>OUT OF STOCK</span>}
                             </div>
-                            <div style={{ fontSize: '11px', color: '#000' }}>{item.category} • ₹{item.price}</div>
+                            <div style={{ fontSize: '11px', color: '#c8e0f4' }}>{item.category} • ₹{item.price}</div>
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: '6px' }}>
@@ -2045,9 +2091,9 @@ export default function CafePOS() {
 
         {activeTab === 'promos' && (
           <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>🎁 Promos</h2>
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 16px' }}>Generate (Min 1)</h3>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>🎁 Promos</h2>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 16px', color: '#FC8019' }}>Generate (Min 1)</h3>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '12px' }}>
                 <div><label style={{ fontSize: '11px' }}>Count</label><input type="number" min="1" value={promoCount} onChange={(e) => setPromoCount(Math.max(1, parseInt(e.target.value) || 1))} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
                 <div><label style={{ fontSize: '11px' }}>Type</label><select value={promoType} onChange={(e) => setPromoType(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }}><option value="percent">%</option><option value="flat">₹</option></select></div>
@@ -2061,10 +2107,10 @@ export default function CafePOS() {
               <button onClick={generatePromos} style={{ width: '100%', padding: '14px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700' }}>🎁 Generate {promoCount}</button>
             </div>
             {promoCodes.length > 0 && (
-              <div style={{ background: '#fff', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <input type="checkbox" checked={selectedPromos.length === promoCodes.length} onChange={selectAllPromos} style={{ width: '18px', height: '18px' }} />
-                  <span style={{ fontSize: '13px', fontWeight: '700' }}>Select All ({selectedPromos.length}/{promoCodes.length})</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>Select All ({selectedPromos.length}/{promoCodes.length})</span>
                 </label>
                 {selectedPromos.length > 0 && <button onClick={() => setShowDeletePassword('promos')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️ Delete ({selectedPromos.length})</button>}
               </div>
@@ -2076,7 +2122,7 @@ export default function CafePOS() {
                 const notYet = p.activationDate && new Date(p.activationDate) > new Date();
                 const expired = new Date(p.expiryDate) < new Date();
                 return (
-                  <div key={i} style={{ background: isUsed || expired ? '#f5f5f5' : '#fff', padding: '14px', borderRadius: '10px', opacity: isUsed || expired ? 0.6 : 1, border: selectedPromos.includes(i) ? '2px solid #FC8019' : '1px solid #e0e0e0', display: 'flex', gap: '10px' }}>
+                  <div key={i} style={{ background: '#122B45', padding: '14px', borderRadius: '10px', opacity: isUsed || expired ? 0.5 : 1, border: selectedPromos.includes(i) ? '2px solid #FC8019' : '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: '10px' }}>
                     <input type="checkbox" checked={selectedPromos.includes(i)} onChange={() => togglePromo(i)} style={{ width: '18px', height: '18px', marginTop: '4px' }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -2085,8 +2131,8 @@ export default function CafePOS() {
                         {notYet && <span style={{ fontSize: '10px', background: '#FF9800', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>SOON</span>}
                         {expired && <span style={{ fontSize: '10px', background: '#999', color: '#fff', padding: '2px 6px', borderRadius: '4px' }}>EXP</span>}
                       </div>
-                      <div style={{ fontSize: '13px', fontWeight: '700' }}>{p.discountType === 'flat' ? '₹' : ''}{p.discountValue}{p.discountType === 'percent' ? '%' : ''} off</div>
-                      <div style={{ fontSize: '10px', color: '#000' }}>{new Date(p.activationDate || p.createdAt).toLocaleDateString()} - {new Date(p.expiryDate).toLocaleDateString()}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>{p.discountType === 'flat' ? '₹' : ''}{p.discountValue}{p.discountType === 'percent' ? '%' : ''} off</div>
+                      <div style={{ fontSize: '10px', color: '#c8e0f4' }}>{new Date(p.activationDate || p.createdAt).toLocaleDateString()} - {new Date(p.expiryDate).toLocaleDateString()}</div>
                       {!isUsed && !expired && (
                         <div style={{ display: 'flex', gap: '4px', marginTop: '8px' }}>
                           <button onClick={() => copyPromoCode(p.code)} style={{ flex: 1, padding: '6px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '10px', fontWeight: '700' }}>📋</button>
@@ -2104,17 +2150,17 @@ export default function CafePOS() {
         {activeTab === 'customers' && (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              <h2 style={{ fontSize: '24px', margin: 0, color: '#000', fontWeight: '800' }}>👥 Customers</h2>
+              <h2 style={{ fontSize: '24px', margin: 0, color: '#fff', fontWeight: '800' }}>👥 Customers</h2>
               <button onClick={() => { setShowContactExport(true); setContactExportPass(''); }} style={{ padding: '10px 18px', background: '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}>📥 Export Contacts</button>
             </div>
 
             {/* ── CONTACT EXPORT PASSWORD MODAL ── */}
             {showContactExport && (
               <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                <div style={{ background: '#fff', borderRadius: '16px', padding: '32px 28px', maxWidth: '400px', width: '100%', textAlign: 'center' }}>
+                <div style={{ background: '#122B45', borderRadius: '16px', padding: '32px 28px', maxWidth: '400px', width: '100%', textAlign: 'center' }}>
                   <div style={{ fontSize: '48px', marginBottom: '8px' }}>🔒</div>
-                  <h3 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 6px', color: '#000' }}>Export Contacts</h3>
-                  <p style={{ fontSize: '13px', color: '#666', margin: '0 0 20px' }}>Enter password to download {allCustomers.filter(c=>c.phone).length} customer contacts</p>
+                  <h3 style={{ fontSize: '20px', fontWeight: '800', margin: '0 0 6px', color: '#fff' }}>Export Contacts</h3>
+                  <p style={{ fontSize: '13px', color: '#c8e0f4', margin: '0 0 20px' }}>Enter password to download {allCustomers.filter(c=>c.phone).length} customer contacts</p>
                   <input autoFocus type="password" placeholder="Enter password" value={contactExportPass} onChange={e => setContactExportPass(e.target.value)} onKeyPress={e => {
                     if (e.key !== 'Enter') return;
                     if (contactExportPass !== DELETE_PASSWORD) { alert('❌ Wrong password'); setContactExportPass(''); return; }
@@ -2142,15 +2188,15 @@ export default function CafePOS() {
                       const w = window.open('', '_blank'); w.document.write(html); w.document.close(); setTimeout(() => w.print(), 400);
                       setShowContactExport(false); setContactExportPass('');
                     }} style={{ padding: '12px 24px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '14px', cursor: 'pointer' }}>🖨️ Print / PDF</button>
-                    <button onClick={() => { setShowContactExport(false); setContactExportPass(''); }} style={{ padding: '12px 20px', background: '#f0f0f0', color: '#555', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => { setShowContactExport(false); setContactExportPass(''); }} style={{ padding: '12px 20px', background: '#0F2236', color: '#c8e0f4', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '8px', fontWeight: '700', fontSize: '14px', cursor: 'pointer' }}>Cancel</button>
                   </div>
                 </div>
               </div>
             )}
 
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input type="tel" placeholder="Phone..." value={lookupPhone} onChange={(e) => setLookupPhone(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && performLookup()} style={{ flex: 1, padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '16px' }} />
+                <input type="tel" placeholder="Phone..." value={lookupPhone} onChange={(e) => setLookupPhone(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && performLookup()} style={{ flex: 1, padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '16px', background: '#1a3a5c', color: '#fff' }} />
                 <button onClick={performLookup} style={{ padding: '12px 24px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700' }}>{lookupLoading ? '⏳' : '🔍'}</button>
               </div>
             </div>
@@ -2166,14 +2212,14 @@ export default function CafePOS() {
               </div>
             )}
             {!lookupCustomer && allCustomers.length > 0 && (
-              <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
-                <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '700' }}>🏆 Top ({allCustomers.length})</h3>
+              <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px' }}>
+                <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '700' }}>🏆 Top ({allCustomers.length})</h3>
                 <div style={{ display: 'grid', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
                   {allCustomers.slice(0, 20).map(c => (
-                    <div key={c.phone} onClick={() => { setLookupPhone(c.phone); performLookup(); }} style={{ padding: '12px', background: '#f9f9f9', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
+                    <div key={c.phone} onClick={() => { setLookupPhone(c.phone); performLookup(); }} style={{ padding: '12px', background: '#0F2236', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between' }}>
                       <div>
-                        <div style={{ fontWeight: '700', color: '#000' }}>{c.name || 'Customer'} • {c.phone}</div>
-                        <div style={{ fontSize: '11px', color: '#000' }}>{c.totalOrders} orders • 🏆 {c.loyaltyPoints}</div>
+                        <div style={{ fontWeight: '700', color: '#fff' }}>{c.name || 'Customer'} • {c.phone}</div>
+                        <div style={{ fontSize: '11px', color: '#c8e0f4' }}>{c.totalOrders} orders • 🏆 {c.loyaltyPoints}</div>
                       </div>
                       <div style={{ fontSize: '16px', fontWeight: '700', color: '#FC8019' }}>₹{c.totalSpent}</div>
                     </div>
@@ -2188,17 +2234,17 @@ export default function CafePOS() {
         {activeTab === 'marketing' && (
           <div>
             {!marketingUnlocked ? (
-              <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', maxWidth: '500px', margin: '40px auto', textAlign: 'center' }}>
+              <div style={{ background: '#122B45', padding: '40px', borderRadius: '12px', maxWidth: '500px', margin: '40px auto', textAlign: 'center' }}>
                 <div style={{ fontSize: '64px' }}>🔒</div>
-                <h2 style={{ color: '#000', fontSize: '24px', margin: '12px 0' }}>Marketing Dashboard</h2>
-                <p style={{ color: '#000', fontSize: '14px', marginBottom: '20px', fontWeight: '600' }}>Password required to access analytics</p>
+                <h2 style={{ color: '#fff', fontSize: '24px', margin: '12px 0' }}>Marketing Dashboard</h2>
+                <p style={{ color: '#c8e0f4', fontSize: '14px', marginBottom: '20px', fontWeight: '600' }}>Password required to access analytics</p>
                 <input type="password" placeholder="Enter password" value={marketingPassword} onChange={(e) => setMarketingPassword(e.target.value)} onKeyPress={(e) => { if (e.key === 'Enter') { if (marketingPassword === DELETE_PASSWORD) { setMarketingUnlocked(true); setMarketingPassword(''); } else { alert('❌ Wrong password'); setMarketingPassword(''); } } }} style={{ width: '100%', padding: '14px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '16px', marginBottom: '12px', boxSizing: 'border-box', color: '#000', fontWeight: '700' }} />
                 <button onClick={() => { if (marketingPassword === DELETE_PASSWORD) { setMarketingUnlocked(true); setMarketingPassword(''); } else { alert('❌ Wrong password'); setMarketingPassword(''); } }} style={{ width: '100%', padding: '14px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>UNLOCK →</button>
               </div>
             ) : (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-                  <h2 style={{ fontSize: '24px', margin: 0, color: '#000', fontWeight: '800' }}>🎯 Marketing & Analytics</h2>
+                  <h2 style={{ fontSize: '24px', margin: 0, color: '#fff', fontWeight: '800' }}>🎯 Marketing & Analytics</h2>
                   <button onClick={() => { setMarketingUnlocked(false); }} style={{ padding: '8px 16px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>🔒 Lock</button>
                 </div>
 
@@ -2224,8 +2270,8 @@ export default function CafePOS() {
                 </div>
 
                 {/* Top Selling Items */}
-                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>🏆 Top Selling Items</h3>
+                <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>🏆 Top Selling Items</h3>
                   {(() => {
                     const itemStats = {};
                     orders.forEach(o => (o.items || []).forEach(i => {
@@ -2234,17 +2280,17 @@ export default function CafePOS() {
                       itemStats[i.name].revenue += i.price * i.quantity;
                     }));
                     const top = Object.entries(itemStats).sort((a, b) => b[1].qty - a[1].qty).slice(0, 10);
-                    return top.length === 0 ? <p style={{ color: '#000' }}>No data yet</p> : (
+                    return top.length === 0 ? <p style={{ color: '#c8e0f4' }}>No data yet</p> : (
                       <div style={{ display: 'grid', gap: '6px' }}>
                         {top.map(([name, stats], i) => (
-                          <div key={name} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div key={name} style={{ padding: '10px', background: '#0F2236', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                               <span style={{ fontSize: '18px', fontWeight: '800' }}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</span>
-                              <span style={{ fontSize: '14px', fontWeight: '700', color: '#000' }}>{name}</span>
+                              <span style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>{name}</span>
                             </div>
                             <div style={{ textAlign: 'right' }}>
                               <div style={{ fontSize: '14px', fontWeight: '800', color: '#FC8019' }}>{stats.qty} sold</div>
-                              <div style={{ fontSize: '11px', color: '#000', fontWeight: '600' }}>₹{stats.revenue}</div>
+                              <div style={{ fontSize: '11px', color: '#c8e0f4', fontWeight: '600' }}>₹{stats.revenue}</div>
                             </div>
                           </div>
                         ))}
@@ -2254,8 +2300,8 @@ export default function CafePOS() {
                 </div>
 
                 {/* Hourly Pattern */}
-                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>⏰ Best Hours (When Customers Order)</h3>
+                <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>⏰ Best Hours (When Customers Order)</h3>
                   {(() => {
                     const hourly = {};
                     orders.forEach(o => {
@@ -2265,14 +2311,14 @@ export default function CafePOS() {
                       } catch (e) {}
                     });
                     const sortedHours = Object.entries(hourly).sort((a, b) => b[1] - a[1]).slice(0, 5);
-                    return sortedHours.length === 0 ? <p style={{ color: '#000' }}>No data yet</p> : (
+                    return sortedHours.length === 0 ? <p style={{ color: '#c8e0f4' }}>No data yet</p> : (
                       <div style={{ display: 'grid', gap: '6px' }}>
                         {sortedHours.map(([hour, count], i) => {
                           const h = parseInt(hour);
                           const label = h === 0 ? '12 AM' : h < 12 ? `${h} AM` : h === 12 ? '12 PM' : `${h-12} PM`;
                           return (
-                            <div key={hour} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ fontSize: '14px', fontWeight: '700', color: '#000' }}>{i === 0 ? '⭐' : ''} {label}</span>
+                            <div key={hour} style={{ padding: '10px', background: '#0F2236', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>{i === 0 ? '⭐' : ''} {label}</span>
                               <span style={{ fontSize: '14px', fontWeight: '800', color: '#FC8019' }}>{count} orders</span>
                             </div>
                           );
@@ -2283,8 +2329,8 @@ export default function CafePOS() {
                 </div>
 
                 {/* Day of Week Pattern */}
-                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>📅 Best Days of Week</h3>
+                <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>📅 Best Days of Week</h3>
                   {(() => {
                     const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                     const daily = {};
@@ -2297,14 +2343,14 @@ export default function CafePOS() {
                       } catch (e) {}
                     });
                     const sortedDays = Object.entries(daily).sort((a, b) => b[1].count - a[1].count);
-                    return sortedDays.length === 0 ? <p style={{ color: '#000' }}>No data yet</p> : (
+                    return sortedDays.length === 0 ? <p style={{ color: '#c8e0f4' }}>No data yet</p> : (
                       <div style={{ display: 'grid', gap: '6px' }}>
                         {sortedDays.map(([day, stats], i) => (
-                          <div key={day} style={{ padding: '10px', background: '#f9f9f9', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
-                            <span style={{ fontSize: '14px', fontWeight: '700', color: '#000' }}>{i === 0 ? '⭐' : ''} {dayNames[day]}</span>
+                          <div key={day} style={{ padding: '10px', background: '#0F2236', borderRadius: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ fontSize: '14px', fontWeight: '700', color: '#fff' }}>{i === 0 ? '⭐' : ''} {dayNames[day]}</span>
                             <div style={{ textAlign: 'right' }}>
                               <div style={{ fontSize: '14px', fontWeight: '800', color: '#FC8019' }}>{stats.count} orders</div>
-                              <div style={{ fontSize: '11px', color: '#000', fontWeight: '600' }}>₹{stats.revenue.toFixed(0)}</div>
+                              <div style={{ fontSize: '11px', color: '#c8e0f4', fontWeight: '600' }}>₹{stats.revenue.toFixed(0)}</div>
                             </div>
                           </div>
                         ))}
@@ -2314,8 +2360,8 @@ export default function CafePOS() {
                 </div>
 
                 {/* Customer Segments */}
-                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>👥 Customer Segments</h3>
+                <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>👥 Customer Segments</h3>
                   {(() => {
                     const vip = allCustomers.filter(c => c.totalOrders >= 10);
                     const regular = allCustomers.filter(c => c.totalOrders >= 5 && c.totalOrders < 10);
@@ -2330,10 +2376,10 @@ export default function CafePOS() {
                     return (
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
                         {segments.map(s => (
-                          <div key={s.name} style={{ padding: '12px', background: '#f9f9f9', borderRadius: '8px', borderLeft: `4px solid ${s.color}` }}>
-                            <div style={{ fontSize: '13px', fontWeight: '700', color: '#000' }}>{s.name}</div>
+                          <div key={s.name} style={{ padding: '12px', background: '#0F2236', borderRadius: '8px', borderLeft: `4px solid ${s.color}` }}>
+                            <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>{s.name}</div>
                             <div style={{ fontSize: '24px', fontWeight: '800', color: s.color }}>{s.list.length}</div>
-                            <div style={{ fontSize: '11px', color: '#000', fontWeight: '600' }}>₹{s.list.reduce((sum, c) => sum + (c.totalSpent || 0), 0)} spent</div>
+                            <div style={{ fontSize: '11px', color: '#c8e0f4', fontWeight: '600' }}>₹{s.list.reduce((sum, c) => sum + (c.totalSpent || 0), 0)} spent</div>
                           </div>
                         ))}
                       </div>
@@ -2342,8 +2388,8 @@ export default function CafePOS() {
                 </div>
 
                 {/* Customer Insights - Predictive */}
-                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>🔮 Customer Insights & Marketing Opportunities</h3>
+                <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>🔮 Customer Insights & Marketing Opportunities</h3>
                   {(() => {
                     const customerPatterns = [];
                     allCustomers.slice(0, 10).forEach(c => {
@@ -2377,20 +2423,20 @@ export default function CafePOS() {
                       }
                     });
                     
-                    return customerPatterns.length === 0 ? <p style={{ color: '#000' }}>Need more order data</p> : (
+                    return customerPatterns.length === 0 ? <p style={{ color: '#c8e0f4' }}>Need more order data</p> : (
                       <div style={{ display: 'grid', gap: '8px' }}>
                         {customerPatterns.map(p => {
                           const hourLabel = p.favHour === 0 ? '12 AM' : p.favHour < 12 ? `${p.favHour} AM` : p.favHour === 12 ? '12 PM' : `${p.favHour-12} PM`;
                           const shouldContact = p.daysSince > 7;
                           const msg = `Hi ${p.name}! 👋 Missing your ${p.favItem} at ${hourLabel}? Come visit Kaapfi 90's today! ☕`;
                           return (
-                            <div key={p.phone} style={{ padding: '12px', background: shouldContact ? '#fff3e0' : '#f9f9f9', borderRadius: '8px', border: shouldContact ? '2px solid #FC8019' : '1px solid #e0e0e0' }}>
+                            <div key={p.phone} style={{ padding: '12px', background: shouldContact ? 'rgba(252,128,25,0.12)' : '#0F2236', borderRadius: '8px', border: shouldContact ? '2px solid #FC8019' : '1px solid rgba(255,255,255,0.08)' }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                <div style={{ fontSize: '14px', fontWeight: '800', color: '#000' }}>{p.name} ({p.phone})</div>
+                                <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>{p.name} ({p.phone})</div>
                                 {shouldContact && <span style={{ fontSize: '10px', background: '#E64A19', color: '#fff', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>⚠️ {p.daysSince}d away</span>}
                               </div>
-                              <div style={{ fontSize: '12px', color: '#000', fontWeight: '600' }}>
-                                🌟 Likes: <strong>{p.favItem}</strong> • ⏰ Usually orders: <strong>{hourLabel}</strong> • 📦 {p.totalOrders} orders
+                              <div style={{ fontSize: '12px', color: '#c8e0f4', fontWeight: '600' }}>
+                                🌟 Likes: <strong style={{ color: '#FC8019' }}>{p.favItem}</strong> • ⏰ Usually orders: <strong style={{ color: '#90CAF9' }}>{hourLabel}</strong> • 📦 {p.totalOrders} orders
                               </div>
                               <div style={{ marginTop: '8px' }}>
                                 <button onClick={() => window.open(`https://wa.me/91${p.phone}?text=${encodeURIComponent(msg)}`, '_blank')} style={{ padding: '6px 12px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' }}>📱 Send WhatsApp</button>
@@ -2404,9 +2450,9 @@ export default function CafePOS() {
                 </div>
 
                 {/* Backup - Email CSV */}
-                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px' }}>
-                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>📧 Backup & Export</h3>
-                  <p style={{ fontSize: '13px', color: '#000', fontWeight: '600', marginBottom: '12px' }}>Download complete backup as CSV (can forward to your email)</p>
+                <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>📧 Backup & Export</h3>
+                  <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '12px' }}>Download complete backup as CSV (can forward to your email)</p>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button onClick={() => downloadCSV(orders, `kaapfi-all-orders-${new Date().toISOString().split('T')[0]}.csv`)} style={{ padding: '12px 20px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📥 All Orders CSV</button>
                     <button onClick={() => {
@@ -2426,13 +2472,13 @@ export default function CafePOS() {
                       a.click();
                     }} style={{ padding: '12px 20px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📥 Expenses CSV</button>
                   </div>
-                  <p style={{ fontSize: '11px', color: '#000', fontWeight: '600', marginTop: '12px', fontStyle: 'italic' }}>💡 Tip: Email these CSV files to yourself at {settings.phone.replace('+91 ', '')} for backup</p>
+                  <p style={{ fontSize: '11px', color: '#c8e0f4', fontWeight: '600', marginTop: '12px', fontStyle: 'italic' }}>💡 Tip: Email these CSV files to yourself at {settings.phone.replace('+91 ', '')} for backup</p>
                 </div>
 
                 {/* 40-Day Customer History Download */}
-                <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginTop: '16px' }}>
-                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>📊 Customer History (Last 40 Days)</h3>
-                  <p style={{ fontSize: '13px', color: '#000', fontWeight: '600', marginBottom: '12px' }}>Download complete customer data with order history, favorite items, and visit patterns</p>
+                <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginTop: '16px' }}>
+                  <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>📊 Customer History (Last 40 Days)</h3>
+                  <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '12px' }}>Download complete customer data with order history, favorite items, and visit patterns</p>
                   <button onClick={() => {
                     const fortyDaysAgo = Date.now() - 40 * 86400000;
                     const recentCustomers = allCustomers.filter(c => {
@@ -2467,9 +2513,9 @@ export default function CafePOS() {
                     alert(`✅ Downloaded ${recentCustomers.length} customers from last 40 days!\n\nIncludes: Names, orders, spending, favorite items & visit patterns.`);
                   }} style={{ padding: '12px 20px', background: '#9C27B0', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', width: '100%' }}>📥 Download 40-Day Customer History</button>
                   
-                  <div style={{ marginTop: '16px', padding: '12px', background: '#f3e5f5', borderRadius: '8px', border: '1px solid #9C27B0' }}>
-                    <div style={{ fontSize: '12px', color: '#000', fontWeight: '700', marginBottom: '6px' }}>📌 What's Included in CSV:</div>
-                    <ul style={{ margin: '4px 0', paddingLeft: '20px', fontSize: '11px', color: '#000', fontWeight: '600', lineHeight: '1.8' }}>
+                  <div style={{ marginTop: '16px', padding: '12px', background: 'rgba(156,39,176,0.15)', borderRadius: '8px', border: '1px solid rgba(156,39,176,0.4)' }}>
+                    <div style={{ fontSize: '12px', color: '#CE93D8', fontWeight: '700', marginBottom: '6px' }}>📌 What's Included in CSV:</div>
+                    <ul style={{ margin: '4px 0', paddingLeft: '20px', fontSize: '11px', color: '#c8e0f4', fontWeight: '600', lineHeight: '1.8' }}>
                       <li>Customer name, phone, total orders</li>
                       <li>Total amount spent & loyalty points</li>
                       <li>First and last order dates</li>
@@ -2477,16 +2523,16 @@ export default function CafePOS() {
                       <li>Favorite item ordered (for personalization)</li>
                       <li>Average order value (spending pattern)</li>
                     </ul>
-                    <div style={{ marginTop: '8px', fontSize: '11px', color: '#7B1FA2', fontWeight: '700', fontStyle: 'italic' }}>
+                    <div style={{ marginTop: '8px', fontSize: '11px', color: '#CE93D8', fontWeight: '700', fontStyle: 'italic' }}>
                       💡 Perfect for WhatsApp marketing & customer retention!
                     </div>
                   </div>
                 </div>
 
                 {/* ── WHATSAPP NUMBERS EXPORT ── */}
-                <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', marginTop: '16px', border: '2px solid #25D366' }}>
-                  <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: '800', color: '#1a7a44' }}>📱 WhatsApp Numbers Export</h3>
-                  <p style={{ fontSize: '13px', color: '#555', margin: '0 0 12px', fontWeight: '600' }}>
+                <div style={{ background: '#122B45', borderRadius: '12px', padding: '20px', marginTop: '16px', border: '2px solid #25D366' }}>
+                  <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: '800', color: '#69F0AE' }}>📱 WhatsApp Numbers Export</h3>
+                  <p style={{ fontSize: '13px', color: '#c8e0f4', margin: '0 0 12px', fontWeight: '600' }}>
                     {allCustomers.filter(c => c.phone).length} customers with phone numbers — ready to message
                   </p>
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
@@ -2514,7 +2560,7 @@ export default function CafePOS() {
                       📄 Download TXT
                     </button>
                   </div>
-                  <div style={{ marginTop: '10px', fontSize: '11px', color: '#777', fontWeight: '600' }}>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: '#c8e0f4', fontWeight: '600' }}>
                     💡 Import CSV into WhatsApp Business or bulk message tool
                   </div>
                 </div>
@@ -2527,24 +2573,24 @@ export default function CafePOS() {
         {activeTab === 'menumanager' && (
           <div>
             {/* Data Security Status - Show first */}
-            <div style={{ background: '#e8f5e9', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '2px solid #4CAF50' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 8px', color: '#2E7D32', fontWeight: '800' }}>🔒 Data Security Status</h3>
-              <div style={{ fontSize: '13px', color: '#000', fontWeight: '600', lineHeight: '1.8' }}>
+            <div style={{ background: 'rgba(76,175,80,0.1)', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '2px solid rgba(76,175,80,0.4)' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 8px', color: '#69F0AE', fontWeight: '800' }}>🔒 Data Security Status</h3>
+              <div style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', lineHeight: '1.8' }}>
                 <div style={{ marginBottom: '6px' }}>✅ All customer data stored safely in Firebase cloud</div>
                 <div style={{ marginBottom: '6px' }}>✅ {orders.length} orders backed up securely</div>
                 <div style={{ marginBottom: '6px' }}>✅ {allCustomers.length} customers saved permanently</div>
                 <div style={{ marginBottom: '6px' }}>✅ Code updates never delete your data</div>
-                <div style={{ marginTop: '12px', padding: '10px', background: '#fff', borderRadius: '6px', fontSize: '12px', border: '1px solid #4CAF50' }}>
-                  💡 <strong>Weekly Backup Tip:</strong> Download customer CSV from Marketing tab every Monday for extra safety
+                <div style={{ marginTop: '12px', padding: '10px', background: 'rgba(76,175,80,0.08)', borderRadius: '6px', fontSize: '12px', border: '1px solid rgba(76,175,80,0.3)', color: '#c8e0f4' }}>
+                  💡 <strong style={{ color: '#69F0AE' }}>Weekly Backup Tip:</strong> Download customer CSV from Marketing tab every Monday for extra safety
                 </div>
               </div>
             </div>
             
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>📸 Menu Manager</h2>
-            
-            <div style={{ background: '#fff3e0', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '2px solid #FC8019' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 8px', color: '#E64A19', fontWeight: '800' }}>💡 How This Works</h3>
-              <ul style={{ margin: '8px 0', paddingLeft: '20px', color: '#000', fontSize: '13px', fontWeight: '600', lineHeight: '1.6' }}>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>📸 Menu Manager</h2>
+
+            <div style={{ background: 'rgba(252,128,25,0.1)', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '2px solid rgba(252,128,25,0.4)' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 8px', color: '#FC8019', fontWeight: '800' }}>💡 How This Works</h3>
+              <ul style={{ margin: '8px 0', paddingLeft: '20px', color: '#c8e0f4', fontSize: '13px', fontWeight: '600', lineHeight: '1.6' }}>
                 <li>Upload photos and create beautiful banners for your menu</li>
                 <li>Customers will see this content on the Public Menu tab</li>
                 <li>Share the Public Menu tab link or generate QR code</li>
@@ -2553,9 +2599,9 @@ export default function CafePOS() {
             </div>
 
             {/* Upload Hero Banner */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>🎨 Hero Banner (Top of Menu)</h3>
-              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '12px' }}>Upload a promotional banner like "Lunch Feast" or "Today's Special"</p>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>🎨 Hero Banner (Top of Menu)</h3>
+              <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '12px' }}>Upload a promotional banner like "Lunch Feast" or "Today's Special"</p>
               <input 
                 type="file" 
                 accept="image/*,video/*" 
@@ -2592,8 +2638,8 @@ export default function CafePOS() {
             </div>
 
             {/* Daily Offer */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', marginBottom: '20px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#000', fontWeight: '800' }}>🔥 Today's Special Offer</h3>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '800' }}>🔥 Today's Special Offer</h3>
               <input 
                 type="text" 
                 placeholder="e.g., Lunch Combo - Save ₹50! (11 AM - 3 PM)" 
@@ -2605,7 +2651,7 @@ export default function CafePOS() {
                 }}
                 style={{ width: '100%', padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', color: '#000', fontWeight: '700', boxSizing: 'border-box', marginBottom: '12px' }}
               />
-              <p style={{ fontSize: '12px', color: '#666', fontWeight: '600', marginBottom: '8px' }}>Upload offer image (optional):</p>
+              <p style={{ fontSize: '12px', color: '#c8e0f4', fontWeight: '600', marginBottom: '8px' }}>Upload offer image (optional):</p>
               <input 
                 type="file" 
                 accept="image/*" 
@@ -2638,24 +2684,24 @@ export default function CafePOS() {
             </div>
 
             {/* Custom Menu Domain */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#000', fontWeight: '800' }}>🌐 Custom Menu URL</h3>
-              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '12px' }}>Set your custom domain for QR codes (e.g. https://menu.atkaapfi.com). Leave blank to use current site URL.</p>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#FC8019', fontWeight: '800' }}>🌐 Custom Menu URL</h3>
+              <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '12px' }}>Set your custom domain for QR codes (e.g. https://menu.atkaapfi.com). Leave blank to use current site URL.</p>
               <input type="text" placeholder="https://menukaapfi.vercel.app" defaultValue={settings.menuDomain || 'https://menukaapfi.vercel.app'} onBlur={e => updateSettings({ ...settings, menuDomain: e.target.value.trim() })} style={{ width: '100%', padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', color: '#000', fontWeight: '700', boxSizing: 'border-box' }} />
             </div>
 
             {/* Per-Table QR Codes */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#000', fontWeight: '800' }}>📱 Per-Table QR Codes</h3>
-              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '16px' }}>Scan → customer is auto-assigned to that table and sees only it as pre-selected.</p>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#FC8019', fontWeight: '800' }}>📱 Per-Table QR Codes</h3>
+              <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '16px' }}>Scan → customer is auto-assigned to that table and sees only it as pre-selected.</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
                 {[1, 2, 3, 4, 'TA'].map(t => {
                   const label = t === 'TA' ? 'Takeaway' : `Table ${t}`;
                   const menuDomain = (settings.menuDomain || 'https://menukaapfi.vercel.app').replace(/\/$/, '');
                   const url = `${menuDomain}?table=${t}`;
                   return (
-                    <div key={t} style={{ background: '#f9f9f9', borderRadius: '10px', padding: '14px', textAlign: 'center', border: '1px solid #eee' }}>
-                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#000', marginBottom: '10px' }}>{label}</div>
+                    <div key={t} style={{ background: '#0F2236', borderRadius: '10px', padding: '14px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', marginBottom: '10px' }}>{label}</div>
                       <img src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(url)}`} alt={label} style={{ width: '100px', height: '100px', borderRadius: '6px' }} />
                       <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                         <a href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(url)}`} download={`kaapfi-qr-${label.replace(' ','-')}.png`} style={{ display: 'block', padding: '7px', background: '#FC8019', color: '#fff', textDecoration: 'none', borderRadius: '6px', fontWeight: '700', fontSize: '11px' }}>⬇️ Download</a>
@@ -2667,9 +2713,9 @@ export default function CafePOS() {
             </div>
 
             {/* Public Menu Headline */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#000', fontWeight: '800' }}>✏️ Public Menu Headline</h3>
-              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '12px' }}>The big headline customers see above the menu items.</p>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#FC8019', fontWeight: '800' }}>✏️ Public Menu Headline</h3>
+              <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '12px' }}>The big headline customers see above the menu items.</p>
               <input
                 type="text"
                 placeholder="e.g., What are you craving for?"
@@ -2680,12 +2726,12 @@ export default function CafePOS() {
             </div>
 
             {/* Featured / Today's Special */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px', border: '2px solid #FFD54F' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#E65100', fontWeight: '800' }}>⭐ Featured / Today's Special</h3>
-              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '14px' }}>Check items to pin them as "Today's Specials" on the customer menu page.</p>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '2px solid rgba(255,213,79,0.4)' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#FFD54F', fontWeight: '800' }}>⭐ Featured / Today's Special</h3>
+              <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '14px' }}>Check items to pin them as "Today's Specials" on the customer menu page.</p>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                 {menuItems.map(item => (
-                  <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: featuredItems.includes(item.id) ? '#fff3e0' : '#f5f5f5', padding: '7px 12px', borderRadius: '20px', cursor: 'pointer', border: featuredItems.includes(item.id) ? '2px solid #FC8019' : '1.5px solid #ddd', fontSize: '12px', fontWeight: '700', transition: 'all 0.15s' }}>
+                  <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: featuredItems.includes(item.id) ? 'rgba(252,128,25,0.2)' : '#0F2236', padding: '7px 12px', borderRadius: '20px', cursor: 'pointer', border: featuredItems.includes(item.id) ? '2px solid #FC8019' : '1.5px solid rgba(255,255,255,0.12)', fontSize: '12px', fontWeight: '700', color: '#fff', transition: 'all 0.15s' }}>
                     <input type="checkbox" checked={featuredItems.includes(item.id)} onChange={() => {
                       const updated = featuredItems.includes(item.id) ? featuredItems.filter(id => id !== item.id) : [...featuredItems, item.id];
                       setFeaturedItems(updated);
@@ -2697,23 +2743,23 @@ export default function CafePOS() {
                 ))}
               </div>
               {featuredItems.length > 0 && (
-                <div style={{ marginTop: '10px', padding: '8px 12px', background: '#fff3e0', borderRadius: '8px', fontSize: '12px', fontWeight: '700', color: '#E65100' }}>
+                <div style={{ marginTop: '10px', padding: '8px 12px', background: 'rgba(252,128,25,0.15)', borderRadius: '8px', fontSize: '12px', fontWeight: '700', color: '#FC8019' }}>
                   ✅ {featuredItems.length} item{featuredItems.length > 1 ? 's' : ''} featured — visible as "Today's Specials" on customer menu
                 </div>
               )}
             </div>
 
             {/* ── VIDEO REELS (Top 3 Featured) ── */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px', border: '2px solid #E91E63' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#880E4F', fontWeight: '800' }}>🎬 Video Reels — Top 3 Dishes</h3>
-              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '16px' }}>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '20px', border: '2px solid rgba(233,30,99,0.5)' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#F48FB1', fontWeight: '800' }}>🎬 Video Reels — Top 3 Dishes</h3>
+              <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '16px' }}>
                 Paste a YouTube, Instagram or direct MP4 video URL for up to 3 dishes. Customers see these as a video reel on the menu. (Videos hosted externally — no storage used here.)
               </p>
               {[0, 1, 2].map(idx => {
                 const reel = reelItems[idx] || {};
                 return (
-                  <div key={idx} style={{ background: '#fce4ec', borderRadius: '10px', padding: '14px', marginBottom: '12px', border: '1px solid #f48fb1' }}>
-                    <div style={{ fontSize: '12px', fontWeight: '800', color: '#880E4F', marginBottom: '10px' }}>🎬 Reel #{idx + 1}</div>
+                  <div key={idx} style={{ background: '#0F2236', borderRadius: '10px', padding: '14px', marginBottom: '12px', border: '1px solid rgba(233,30,99,0.3)' }}>
+                    <div style={{ fontSize: '12px', fontWeight: '800', color: '#F48FB1', marginBottom: '10px' }}>🎬 Reel #{idx + 1}</div>
                     <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
                       <select value={reel.itemId || ''} onChange={e => {
                         const updated = [...reelItems]; updated[idx] = { ...(updated[idx] || {}), itemId: Number(e.target.value) };
@@ -2728,7 +2774,7 @@ export default function CafePOS() {
                       setReelItems(updated); localStorage.setItem('reelItems', JSON.stringify(updated));
                     }} style={{ width: '100%', padding: '8px 10px', border: '1.5px solid #f06292', borderRadius: '6px', fontSize: '12px', fontWeight: '600', color: '#000', boxSizing: 'border-box' }} />
                     {reel.videoUrl && (
-                      <div style={{ marginTop: '8px', fontSize: '11px', color: '#c2185b', fontWeight: '700' }}>
+                      <div style={{ marginTop: '8px', fontSize: '11px', color: '#F48FB1', fontWeight: '700' }}>
                         ✅ Video URL saved — will show on customer menu
                         <button onClick={() => {
                           const updated = [...reelItems]; updated[idx] = {};
@@ -2742,18 +2788,18 @@ export default function CafePOS() {
             </div>
 
             {/* Per-Item Photo Upload */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#000', fontWeight: '800' }}>🍽️ Menu Item Photos</h3>
-              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '16px' }}>Upload a photo for each item — shown on the customer menu page.</p>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#FC8019', fontWeight: '800' }}>🍽️ Menu Item Photos</h3>
+              <p style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', marginBottom: '16px' }}>Upload a photo for each item — shown on the customer menu page.</p>
               <div style={{ display: 'grid', gap: '12px' }}>
                 {menuItems.map(item => (
-                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: '#f9f9f9', borderRadius: '10px', border: '1px solid #eee' }}>
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', background: '#0F2236', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
                     <div style={{ width: '60px', height: '60px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, background: '#e0e0e0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px' }}>
                       {menuItemImages[item.id] ? <img src={menuItemImages[item.id]} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : item.emoji}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#000', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
-                      <div style={{ fontSize: '11px', color: '#666', marginBottom: '6px' }}>₹{item.price} • {item.category}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', marginBottom: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</div>
+                      <div style={{ fontSize: '11px', color: '#c8e0f4', marginBottom: '6px' }}>₹{item.price} • {item.category}</div>
                       <input type="file" accept="image/*,video/*" id={`img-${item.id}`} style={{ display: 'none' }} onChange={(e) => {
                         const file = e.target.files[0];
                         if (!file) return;
@@ -2786,13 +2832,13 @@ export default function CafePOS() {
 
 
             {/* ── CART REVENUE ENGINE ADMIN ── */}
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginTop: '20px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#000', fontWeight: '800' }}>🎯 Cart Revenue Engine</h3>
-              <p style={{ fontSize: '12px', color: '#666', fontWeight: '600', marginBottom: '16px' }}>Smart upsell popup shown once per session when cart is below threshold. Score = 0.4×Margin + 0.3×Popularity + 0.3×Relevance.</p>
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginTop: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#FC8019', fontWeight: '800' }}>🎯 Cart Revenue Engine</h3>
+              <p style={{ fontSize: '12px', color: '#c8e0f4', fontWeight: '600', marginBottom: '16px' }}>Smart upsell popup shown once per session when cart is below threshold. Score = 0.4×Margin + 0.3×Popularity + 0.3×Relevance.</p>
 
               {/* ── RULE CONFIG ── */}
-              <div style={{ background: '#f0f4ff', padding: '14px', borderRadius: '10px', marginBottom: '16px', border: '1px solid #c5d3f5' }}>
-                <div style={{ fontSize: '13px', fontWeight: '800', color: '#1E4FA1', marginBottom: '12px' }}>⚙️ Rule Configuration</div>
+              <div style={{ background: '#0F2236', padding: '14px', borderRadius: '10px', marginBottom: '16px', border: '1px solid rgba(30,79,161,0.5)' }}>
+                <div style={{ fontSize: '13px', fontWeight: '800', color: '#90CAF9', marginBottom: '12px' }}>⚙️ Rule Configuration</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px', marginBottom: '10px' }}>
                   <div>
                     <label style={{ fontSize: '11px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '4px' }}>Cart Threshold ₹</label>
@@ -2815,8 +2861,8 @@ export default function CafePOS() {
               </div>
 
               {/* ── ADD UPSELL ITEM ── */}
-              <div style={{ background: '#f5f5f5', padding: '16px', borderRadius: '10px', marginBottom: '16px', border: '1px solid #eee' }}>
-                <div style={{ fontSize: '13px', fontWeight: '800', color: '#000', marginBottom: '12px' }}>➕ Add Upsell Item</div>
+              <div style={{ background: '#0F2236', padding: '16px', borderRadius: '10px', marginBottom: '16px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <div style={{ fontSize: '13px', fontWeight: '800', color: '#FC8019', marginBottom: '12px' }}>➕ Add Upsell Item</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
                   <div>
                     <label style={{ fontSize: '11px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '4px' }}>Item Name *</label>
@@ -3371,31 +3417,31 @@ export default function CafePOS() {
 
         {activeTab === 'settings' && (
           <div style={{ maxWidth: '700px' }}>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#000', fontWeight: '800' }}>⚙️ Settings</h2>
-            <div style={{ background: '#e8f5e9', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#2E7D32' }}>
+            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>⚙️ Settings</h2>
+            <div style={{ background: 'rgba(76,175,80,0.1)', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#69F0AE', border: '1px solid rgba(76,175,80,0.3)' }}>
               🔄 <strong>All changes sync to ALL devices instantly!</strong>
             </div>
-            <div style={{ background: '#fff', padding: '24px', borderRadius: '12px' }}>
+            <div style={{ background: '#122B45', padding: '24px', borderRadius: '12px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019' }}>Cafe Info</h3>
               {[{ key: 'cafeName', label: 'Name' }, { key: 'tagline', label: 'Tagline' }, { key: 'phone', label: 'Phone' }, { key: 'address', label: 'Address' }].map(f => (
                 <div key={f.key} style={{ marginBottom: '12px' }}>
-                  <label style={{ fontSize: '13px', color: '#000', fontWeight: '700', display: 'block', marginBottom: '4px' }}>{f.label}</label>
+                  <label style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '700', display: 'block', marginBottom: '4px' }}>{f.label}</label>
                   <input type="text" value={settings[f.key]} onChange={(e) => updateSettings({ ...settings, [f.key]: e.target.value })} style={{ width: '100%', padding: '10px', border: '1px solid #e0e0e0', borderRadius: '6px', boxSizing: 'border-box' }} />
                 </div>
               ))}
-              <div style={{ padding: '12px', background: '#fff3e0', borderRadius: '8px', marginTop: '16px' }}>
+              <div style={{ padding: '12px', background: 'rgba(252,128,25,0.1)', borderRadius: '8px', marginTop: '16px', border: '1px solid rgba(252,128,25,0.3)' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={settings.preventNegativeStock} onChange={(e) => updateSettings({ ...settings, preventNegativeStock: e.target.checked })} style={{ width: '18px', height: '18px' }} />
-                  <span style={{ fontSize: '13px', fontWeight: '700' }}>🔒 Block orders if insufficient stock</span>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>🔒 Block orders if insufficient stock</span>
                 </label>
               </div>
-              <div style={{ padding: '12px', background: '#fff3e0', borderRadius: '8px', fontSize: '12px', color: '#E64A19', marginTop: '12px' }}>🔒 Admin features are password protected</div>
+              <div style={{ padding: '12px', background: 'rgba(230,74,25,0.15)', borderRadius: '8px', fontSize: '12px', color: '#FC8019', marginTop: '12px', border: '1px solid rgba(230,74,25,0.3)' }}>🔒 Admin features are password protected</div>
             </div>
           </div>
         )}
       </div>
 
-      <footer style={{ background: '#fff', borderTop: '1px solid #eee', padding: '20px 24px', marginTop: '40px', textAlign: 'center', color: '#000', fontSize: '13px' }}>
+      <footer style={{ background: '#0A1929', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '20px 24px', marginTop: '40px', textAlign: 'center', color: 'rgba(255,255,255,0.6)', fontSize: '13px' }}>
         <div>{settings.cafeName} • {settings.address}</div>
         <div style={{ fontSize: '11px', marginTop: '4px' }}>Developed by Telzon Marketing</div>
       </footer>
