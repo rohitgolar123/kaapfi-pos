@@ -311,7 +311,7 @@ export default function CafePOS() {
     // Check if this is the dedicated menu hostname OR URL param
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
-    const isMenuHost = window.location.hostname === 'menukaapfi90s.netlify.app';
+    const isMenuHost = window.location.hostname === 'menukaapfi.netlify.app';
     if (tabParam === 'publicmenu' || isMenuHost) {
       setActiveTab('publicmenu');
       setIsPublicMenuMode(true);
@@ -2437,7 +2437,7 @@ export default function CafePOS() {
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#000', fontWeight: '800' }}>🌐 Custom Menu URL</h3>
               <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '12px' }}>Set your custom domain for QR codes (e.g. https://menu.atkaapfi.com). Leave blank to use current site URL.</p>
-              <input type="text" placeholder="https://menukaapfi90s.netlify.app" defaultValue={settings.menuDomain || 'https://menukaapfi90s.netlify.app'} onBlur={e => updateSettings({ ...settings, menuDomain: e.target.value.trim() })} style={{ width: '100%', padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', color: '#000', fontWeight: '700', boxSizing: 'border-box' }} />
+              <input type="text" placeholder="https://menukaapfi.netlify.app" defaultValue={settings.menuDomain || 'https://menukaapfi.netlify.app'} onBlur={e => updateSettings({ ...settings, menuDomain: e.target.value.trim() })} style={{ width: '100%', padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', color: '#000', fontWeight: '700', boxSizing: 'border-box' }} />
             </div>
 
             {/* Per-Table QR Codes */}
@@ -2447,7 +2447,7 @@ export default function CafePOS() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
                 {[1, 2, 3, 4, 'TA'].map(t => {
                   const label = t === 'TA' ? 'Takeaway' : `Table ${t}`;
-                  const menuDomain = (settings.menuDomain || 'https://menukaapfi90s.netlify.app').replace(/\/$/, '');
+                  const menuDomain = (settings.menuDomain || 'https://menukaapfi.netlify.app').replace(/\/$/, '');
                   const url = `${menuDomain}?table=${t}`;
                   return (
                     <div key={t} style={{ background: '#f9f9f9', borderRadius: '10px', padding: '14px', textAlign: 'center', border: '1px solid #eee' }}>
