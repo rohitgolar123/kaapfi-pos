@@ -292,6 +292,9 @@ export default function CafePOS() {
   const [newMenuOrders, setNewMenuOrders] = useState([]);
   const knownOrderIdsRef = useRef(null);
   const [tableStatus, setTableStatus] = useState({ 1: 'available', 2: 'available', 3: 'available', 4: 'available' });
+  const [featuredItems, setFeaturedItems] = useState(() => { try { return JSON.parse(localStorage.getItem('featuredItems') || '[]'); } catch(e) { return []; } });
+  const [cashCalcInput, setCashCalcInput] = useState('');
+  const [cashCalcBill, setCashCalcBill] = useState('');
   const [menuItemImages, setMenuItemImages] = useState({});
   const [upsellItems, setUpsellItems] = useState([]);
   const [showUpsellPopup, setShowUpsellPopup] = useState(false);
@@ -407,9 +410,17 @@ export default function CafePOS() {
       if (snap.exists()) setSettings({ ...defaultSettings, ...snap.data().data });
     });
 
-    // TABLE STATUS - Real-time sync
+    // TABLE STATUS - Real-time sync with stale-data auto-clear
     const unsubTableStatus = onSnapshot(doc(db, "appData", "tableStatus"), (snap) => {
-      if (snap.exists()) setTableStatus(snap.data().data || { 1: 'available', 2: 'available', 3: 'available', 4: 'available' });
+      if (snap.exists()) {
+        const data = snap.data().data || { 1: 'available', 2: 'available', 3: 'available', 4: 'available' };
+        setOrders(prev => {
+          const activeTableNums = new Set(prev.filter(o => (o.status || '') !== 'delivered' && o.tableNumber && o.tableNumber !== 'T/A').map(o => String(o.tableNumber)));
+          const cleaned = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, activeTableNums.has(String(k)) ? v : 'available']));
+          setTableStatus(cleaned);
+          return prev;
+        });
+      }
     });
 
     // UPSELL ITEMS - Real-time sync
@@ -1115,7 +1126,7 @@ export default function CafePOS() {
           <input type="password" placeholder="Enter Password" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '14px', fontSize: '16px', border: '2px solid #e0e0e0', borderRadius: '8px', marginBottom: '16px', boxSizing: 'border-box' }} />
           {loginError && <div style={{ color: '#E64A19', fontSize: '14px', marginBottom: '16px' }}>{loginError}</div>}
           <button onClick={handleLogin} style={{ width: '100%', padding: '14px', fontSize: '16px', fontWeight: '700', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>LOGIN →</button>
-          <p style={{ marginTop: '24px', fontSize: '12px', color: '#000' }}>🔒 Kaapfi POS v6 • Tables + History + Expense Book</p>
+          <p style={{ marginTop: '24px', fontSize: '12px', color: '#666' }}>Developed by Telzon Marketing</p>
         </div>
       </div>
     );
@@ -1311,11 +1322,22 @@ export default function CafePOS() {
                   const occupied = tableStatus[t] === 'occupied';
                   const isSelected = selectedTable === t;
                   return (
-                    <div key={t} onClick={() => setSelectedTable(isSelected ? null : t)}
+                    <div key={t} onClick={() => {
+                      if (isSelected) { setSelectedTable(null); }
+                      else {
+                        setSelectedTable(t);
+                        if (occupied) {
+                          const existingOrder = orders.find(o => String(o.tableNumber) === String(t) && (o.status || '') !== 'delivered');
+                          if (existingOrder && existingOrder.items && existingOrder.items.length > 0) {
+                            setCurrentOrder([...existingOrder.items]);
+                          }
+                        }
+                      }
+                    }}
                       style={{ flex: '1', minWidth: '80px', background: isSelected ? '#FC8019' : occupied ? '#FFF3E0' : '#E8F5E9', border: `2px solid ${isSelected ? '#E64A19' : occupied ? '#E64A19' : '#4CAF50'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
                       <div style={{ fontSize: '18px' }}>{isSelected ? '✅' : occupied ? '🔴' : '🟢'}</div>
                       <div style={{ fontSize: '13px', fontWeight: '800', color: isSelected ? '#fff' : '#000' }}>Table {t}</div>
-                      <div style={{ fontSize: '11px', fontWeight: '700', color: isSelected ? '#fff' : occupied ? '#E64A19' : '#4CAF50' }}>{isSelected ? 'Selected' : occupied ? 'Occupied' : 'Free'}</div>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: isSelected ? '#fff' : occupied ? '#E64A19' : '#4CAF50' }}>{isSelected ? 'Selected' : occupied ? '+ Add Items' : 'Free'}</div>
                       {occupied && !isSelected && (
                         <button onClick={(e) => { e.stopPropagation(); const u = { ...tableStatus, [t]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u); }}
                           style={{ marginTop: '4px', fontSize: '9px', fontWeight: '800', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer' }}>
@@ -1361,6 +1383,11 @@ export default function CafePOS() {
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#000' }}>🛒 Current Order ({currentOrder.length})</h3>
                 {selectedTable && <span style={{ background: '#FC8019', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>{selectedTable === 'T/A' ? '📦 Takeaway' : `🪑 Table ${selectedTable}`}</span>}
               </div>
+              {selectedTable && selectedTable !== 'T/A' && tableStatus[selectedTable] === 'occupied' && currentOrder.length > 0 && (
+                <div style={{ background: '#FFF3E0', border: '1.5px solid #FC8019', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '12px', fontWeight: '700', color: '#E64A19' }}>
+                  ➕ Adding more items to Table {selectedTable} — existing order loaded
+                </div>
+              )}
               <input type="tel" placeholder="Customer phone" value={customerPhone} onChange={(e) => handlePhoneChange(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '2px solid #FC8019', borderRadius: '8px', marginBottom: '10px', boxSizing: 'border-box' }} />
               <input type="text" placeholder="Customer name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} style={{ width: '100%', padding: '10px', fontSize: '14px', border: '1px solid #e0e0e0', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box' }} />
 
@@ -1754,10 +1781,12 @@ export default function CafePOS() {
                           {order.source === 'public_menu' && <span style={{ fontSize: '10px', background: '#e3f2fd', color: '#1565C0', padding: '2px 7px', borderRadius: '10px' }}>🌐 Online</span>}
                           {order.tableNumber && <span style={{ fontSize: '10px', background: '#f3e5f5', color: '#6A1B9A', padding: '2px 7px', borderRadius: '10px' }}>{order.tableNumber === 'T/A' ? '📦 T/A' : `🪑 T${order.tableNumber}`}</span>}
                         </div>
-                        <div style={{ marginTop: '4px' }}>
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           {order.paymentStatus === 'paid'
-                            ? <span style={{ fontSize: '11px', background: '#e8f5e9', color: '#2E7D32', padding: '3px 10px', borderRadius: '10px', fontWeight: '700' }}>✅ Paid</span>
-                            : <button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '11px', background: '#FFF3E0', color: '#E64A19', border: '1px solid #FC8019', padding: '3px 10px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}>💰 Mark Paid</button>
+                            ? <span style={{ fontSize: '11px', background: '#1B5E20', color: '#fff', padding: '3px 10px', borderRadius: '10px', fontWeight: '800' }}>✅ PAID</span>
+                            : order.paymentStatus === 'partial'
+                            ? <><span style={{ fontSize: '11px', background: '#F57F17', color: '#fff', padding: '3px 10px', borderRadius: '10px', fontWeight: '800' }}>⚡ PARTIAL</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '10px', background: '#FFF3E0', color: '#E64A19', border: '1px solid #FC8019', padding: '2px 8px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>Mark Paid</button></>
+                            : <><span style={{ fontSize: '11px', background: '#B71C1C', color: '#fff', padding: '3px 10px', borderRadius: '10px', fontWeight: '800' }}>🔴 PAY PENDING</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '10px', background: '#FFF3E0', color: '#E64A19', border: '1px solid #FC8019', padding: '2px 8px', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>Mark Paid</button></>
                           }
                         </div>
                       </div>
@@ -2334,6 +2363,42 @@ export default function CafePOS() {
                     </div>
                   </div>
                 </div>
+
+                {/* ── WHATSAPP NUMBERS EXPORT ── */}
+                <div style={{ background: '#fff', borderRadius: '12px', padding: '20px', marginTop: '16px', border: '2px solid #25D366' }}>
+                  <h3 style={{ margin: '0 0 8px', fontSize: '16px', fontWeight: '800', color: '#1a7a44' }}>📱 WhatsApp Numbers Export</h3>
+                  <p style={{ fontSize: '13px', color: '#555', margin: '0 0 12px', fontWeight: '600' }}>
+                    {allCustomers.filter(c => c.phone).length} customers with phone numbers — ready to message
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button onClick={() => {
+                      const phones = allCustomers.filter(c => c.phone).map(c => c.phone);
+                      if (phones.length === 0) { alert('No phone numbers found'); return; }
+                      const csv = 'Phone Number\n' + phones.join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a'); a.href = url; a.download = `kaapfi-whatsapp-${new Date().toISOString().split('T')[0]}.csv`; a.click();
+                      URL.revokeObjectURL(url);
+                      alert(`✅ Downloaded ${phones.length} WhatsApp numbers!`);
+                    }} style={{ padding: '12px 20px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '14px', cursor: 'pointer' }}>
+                      📥 Download CSV
+                    </button>
+                    <button onClick={() => {
+                      const phones = allCustomers.filter(c => c.phone).map(c => c.phone);
+                      if (phones.length === 0) { alert('No phone numbers found'); return; }
+                      const content = `${settings.cafeName} - WhatsApp Numbers\nExported: ${new Date().toLocaleDateString('en-IN')}\nTotal: ${phones.length}\n\n` + phones.join('\n');
+                      const blob = new Blob([content], { type: 'text/plain' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a'); a.href = url; a.download = `kaapfi-whatsapp-${new Date().toISOString().split('T')[0]}.txt`; a.click();
+                      URL.revokeObjectURL(url);
+                    }} style={{ padding: '12px 20px', background: '#128C7E', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '14px', cursor: 'pointer' }}>
+                      📄 Download TXT
+                    </button>
+                  </div>
+                  <div style={{ marginTop: '10px', fontSize: '11px', color: '#777', fontWeight: '600' }}>
+                    💡 Import CSV into WhatsApp Business or bulk message tool
+                  </div>
+                </div>
               </>
             )}
           </div>
@@ -2493,6 +2558,30 @@ export default function CafePOS() {
                 onBlur={(e) => updateSettings({ ...settings, publicMenuHeadline: e.target.value })}
                 style={{ width: '100%', padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', color: '#000', fontWeight: '700', boxSizing: 'border-box' }}
               />
+            </div>
+
+            {/* Featured / Today's Special */}
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px', border: '2px solid #FFD54F' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#E65100', fontWeight: '800' }}>⭐ Featured / Today's Special</h3>
+              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '14px' }}>Check items to pin them as "Today's Specials" on the customer menu page.</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {menuItems.map(item => (
+                  <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', background: featuredItems.includes(item.id) ? '#fff3e0' : '#f5f5f5', padding: '7px 12px', borderRadius: '20px', cursor: 'pointer', border: featuredItems.includes(item.id) ? '2px solid #FC8019' : '1.5px solid #ddd', fontSize: '12px', fontWeight: '700', transition: 'all 0.15s' }}>
+                    <input type="checkbox" checked={featuredItems.includes(item.id)} onChange={() => {
+                      const updated = featuredItems.includes(item.id) ? featuredItems.filter(id => id !== item.id) : [...featuredItems, item.id];
+                      setFeaturedItems(updated);
+                      localStorage.setItem('featuredItems', JSON.stringify(updated));
+                    }} style={{ accentColor: '#FC8019', width: '14px', height: '14px' }} />
+                    <span>{item.emoji} {item.name}</span>
+                    {featuredItems.includes(item.id) && <span style={{ color: '#FC8019' }}>⭐</span>}
+                  </label>
+                ))}
+              </div>
+              {featuredItems.length > 0 && (
+                <div style={{ marginTop: '10px', padding: '8px 12px', background: '#fff3e0', borderRadius: '8px', fontSize: '12px', fontWeight: '700', color: '#E65100' }}>
+                  ✅ {featuredItems.length} item{featuredItems.length > 1 ? 's' : ''} featured — visible as "Today's Specials" on customer menu
+                </div>
+              )}
             </div>
 
             {/* Per-Item Photo Upload */}
@@ -2781,6 +2870,42 @@ export default function CafePOS() {
                 <div style={{ fontSize: '22px', fontWeight: '900', color: '#fff', letterSpacing: '-0.5px' }}>{settings.publicMenuHeadline || "What are you craving for?"}</div>
               </div>
 
+              {/* ── TODAY'S SPECIALS (FEATURED ITEMS) ── */}
+              {featuredItems.length > 0 && menuItems.filter(i => featuredItems.includes(i.id)).length > 0 && (
+                <div style={{ marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: '900', color: '#FFD54F' }}>⭐ Today's Specials</span>
+                    <div style={{ flex: 1, height: '1px', background: 'rgba(255,213,79,0.3)' }} />
+                  </div>
+                  <div className="pm-scroll" style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '6px' }}>
+                    {menuItems.filter(i => featuredItems.includes(i.id)).map(item => {
+                      const inCart = customerMenuOrder.find(ci => ci.id === item.id);
+                      const imgSrc = menuItemImages[item.id];
+                      return (
+                        <div key={item.id} style={{ flexShrink: 0, width: '140px', background: 'linear-gradient(135deg, #1E4FA1, #163D7A)', borderRadius: '14px', border: '2px solid #FFD54F', overflow: 'hidden' }}>
+                          <div style={{ height: '90px', background: imgSrc ? `url(${imgSrc}) center/cover` : 'linear-gradient(135deg,#1E4FA1,#0F2347)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '40px' }}>
+                            {!imgSrc && item.emoji}
+                          </div>
+                          <div style={{ padding: '8px 10px 10px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '800', color: '#fff', marginBottom: '2px', lineHeight: 1.2 }}>{item.name}</div>
+                            <div style={{ fontSize: '15px', fontWeight: '900', color: '#FFD54F', marginBottom: '8px' }}>₹{item.price}</div>
+                            {!inCart ? (
+                              <button onClick={() => handlePublicAddToCart(item)} style={{ width: '100%', padding: '6px 0', background: '#3A6CC5', color: '#fff', border: 'none', borderRadius: '7px', fontWeight: '900', fontSize: '14px', cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>Add +</button>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(58,108,197,0.25)', borderRadius: '7px', padding: '3px 6px' }}>
+                                <button onClick={() => setCustomerMenuOrder(customerMenuOrder.map(i=>i.id===item.id?{...i,quantity:i.quantity-1}:i).filter(i=>i.quantity>0))} style={{ background: 'none', color: '#3A6CC5', border: 'none', width: '24px', height: '24px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+                                <span style={{ fontSize: '14px', fontWeight: '900', color: '#fff' }}>{inCart.quantity}</span>
+                                <button onClick={() => handlePublicAddToCart(item)} style={{ background: '#3A6CC5', color: '#fff', border: 'none', borderRadius: '5px', width: '24px', height: '24px', fontWeight: '900', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* ── CATEGORY CIRCLES ── */}
               <div className="pm-scroll" style={{ display: 'flex', gap: '14px', overflowX: 'auto', padding: '10px 0 16px' }}>
                 {['All', ...menuItems.reduce((acc, i) => { const c = (i.category || '').trim(); if (c && !acc.some(x => x.toLowerCase() === c.toLowerCase())) acc.push(c); return acc; }, [])].map(cat => {
@@ -2833,6 +2958,11 @@ export default function CafePOS() {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* ── PUBLIC MENU FOOTER ── */}
+              <div style={{ textAlign: 'center', padding: '20px 0 28px', color: 'rgba(255,255,255,0.3)', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px' }}>
+                Developed by Telzon Marketing
               </div>
             </div>
 
@@ -3014,7 +3144,7 @@ export default function CafePOS() {
 
       <footer style={{ background: '#fff', borderTop: '1px solid #eee', padding: '20px 24px', marginTop: '40px', textAlign: 'center', color: '#000', fontSize: '13px' }}>
         <div>{settings.cafeName} • {settings.address}</div>
-        <div style={{ fontSize: '11px', marginTop: '4px' }}>v6 • Tables + History + Expense Book ☁️</div>
+        <div style={{ fontSize: '11px', marginTop: '4px' }}>Developed by Telzon Marketing</div>
       </footer>
     </div>
   );
