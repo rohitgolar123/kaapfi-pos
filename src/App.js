@@ -222,6 +222,9 @@ export default function CafePOS() {
   const [activeTab, setActiveTab] = useState('order');
   const [menuItems, setMenuItems] = useState(defaultMenu);
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [cashReceivedInput, setCashReceivedInput] = useState('');
+  const [splitCash, setSplitCash] = useState('');
+  const [splitUpi, setSplitUpi] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerData, setCustomerData] = useState(null);
@@ -1051,7 +1054,7 @@ export default function CafePOS() {
     return Math.min(...possibleServings);
   };
 
-  const categories = ['All', ...new Set(menuItems.map(item => item.category))];
+  const categories = ['All', ...menuItems.reduce((acc, item) => { const c = (item.category || '').trim(); if (c && !acc.some(x => x.toLowerCase() === c.toLowerCase())) acc.push(c); return acc; }, [])];
   const filteredItems = selectedCategory === 'All' ? menuItems : menuItems.filter(item => item.category === selectedCategory);
   
   // Use ISO date for consistent comparison across devices
@@ -1287,11 +1290,31 @@ export default function CafePOS() {
         })}
       </nav>}
 
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: isPublicMenuMode ? '0' : '24px' }}>
+      <div style={{ maxWidth: isPublicMenuMode ? '100%' : '1400px', margin: '0 auto', padding: isPublicMenuMode ? '0' : '24px', boxSizing: 'border-box' }}>
 
         {activeTab === 'order' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 420px', gap: '24px' }}>
             <div>
+              {/* TABLE STATUS ROW */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                {[1, 2, 3, 4].map(t => {
+                  const occupied = tableStatus[t] === 'occupied';
+                  return (
+                    <div key={t} style={{ flex: '1', minWidth: '80px', background: occupied ? '#FFF3E0' : '#E8F5E9', border: `2px solid ${occupied ? '#E64A19' : '#4CAF50'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}
+                      onClick={() => { if (occupied) { /* show table orders */ } }}>
+                      <div style={{ fontSize: '18px' }}>{occupied ? '🔴' : '🟢'}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#000' }}>Table {t}</div>
+                      <div style={{ fontSize: '11px', fontWeight: '700', color: occupied ? '#E64A19' : '#4CAF50' }}>{occupied ? 'Occupied' : 'Free'}</div>
+                    </div>
+                  );
+                })}
+                <div style={{ flex: '1', minWidth: '80px', background: '#E3F2FD', border: '2px solid #2196F3', borderRadius: '10px', padding: '10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '18px' }}>📦</div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#000' }}>T/A</div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#2196F3' }}>Takeaway</div>
+                </div>
+              </div>
+
               <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 {categories.map(cat => (
                   <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', background: selectedCategory === cat ? '#FC8019' : '#fff', color: selectedCategory === cat ? '#fff' : '#666', fontWeight: '700', fontSize: '13px', cursor: 'pointer' }}>{cat}</button>
@@ -1398,11 +1421,45 @@ export default function CafePOS() {
                     {totalDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E64A19' }}><span>Discount</span><span>-₹{totalDiscount.toFixed(0)}</span></div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', marginTop: '6px', color: '#000' }}><span>TOTAL</span><span>₹{total.toFixed(0)}</span></div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginBottom: '10px' }}>
-                    {['cash', 'card', 'upi'].map(m => (
-                      <button key={m} onClick={() => setPaymentMethod(m)} style={{ padding: '8px', border: 'none', borderRadius: '6px', background: paymentMethod === m ? '#FC8019' : '#f0f0f0', color: paymentMethod === m ? '#fff' : '#666', fontWeight: '700', cursor: 'pointer', fontSize: '11px', textTransform: 'uppercase' }}>{m}</button>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '10px' }}>
+                    {['cash', 'card', 'upi', 'split'].map(m => (
+                      <button key={m} onClick={() => { setPaymentMethod(m); setCashReceivedInput(''); setSplitCash(''); setSplitUpi(''); }} style={{ padding: '8px', border: 'none', borderRadius: '6px', background: paymentMethod === m ? '#FC8019' : '#f0f0f0', color: paymentMethod === m ? '#fff' : '#666', fontWeight: '700', cursor: 'pointer', fontSize: '11px', textTransform: 'uppercase' }}>{m === 'split' ? '✂️ Split' : m.toUpperCase()}</button>
                     ))}
                   </div>
+                  {/* Change calculator for cash */}
+                  {paymentMethod === 'cash' && (
+                    <div style={{ marginBottom: '10px', padding: '10px', background: '#e8f5e9', borderRadius: '8px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: '700', color: '#000' }}>💵 Cash Received</label>
+                      <input type="number" value={cashReceivedInput} onChange={e => setCashReceivedInput(e.target.value)} placeholder={`₹${total.toFixed(0)}`} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #4CAF50', marginTop: '4px', fontSize: '14px', fontWeight: '700', boxSizing: 'border-box' }} />
+                      {cashReceivedInput && parseFloat(cashReceivedInput) >= total && (
+                        <div style={{ marginTop: '6px', fontSize: '15px', fontWeight: '800', color: '#2E7D32' }}>💰 Change: ₹{(parseFloat(cashReceivedInput) - total).toFixed(0)}</div>
+                      )}
+                      {cashReceivedInput && parseFloat(cashReceivedInput) < total && (
+                        <div style={{ marginTop: '6px', fontSize: '13px', fontWeight: '700', color: '#E64A19' }}>⚠️ Short by ₹{(total - parseFloat(cashReceivedInput)).toFixed(0)}</div>
+                      )}
+                    </div>
+                  )}
+                  {/* Split payment inputs */}
+                  {paymentMethod === 'split' && (
+                    <div style={{ marginBottom: '10px', padding: '10px', background: '#fff3e0', borderRadius: '8px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: '700', color: '#000' }}>✂️ Split Payment (Total: ₹{total.toFixed(0)})</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+                        <div>
+                          <div style={{ fontSize: '10px', fontWeight: '700', color: '#666', marginBottom: '3px' }}>💵 Cash</div>
+                          <input type="number" value={splitCash} onChange={e => { setSplitCash(e.target.value); setSplitUpi((total - parseFloat(e.target.value || 0)).toFixed(0)); }} placeholder="0" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #FC8019', fontSize: '14px', fontWeight: '700', boxSizing: 'border-box' }} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '10px', fontWeight: '700', color: '#666', marginBottom: '3px' }}>📱 UPI</div>
+                          <input type="number" value={splitUpi} onChange={e => { setSplitUpi(e.target.value); setSplitCash((total - parseFloat(e.target.value || 0)).toFixed(0)); }} placeholder="0" style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #FC8019', fontSize: '14px', fontWeight: '700', boxSizing: 'border-box' }} />
+                        </div>
+                      </div>
+                      {splitCash && splitUpi && (
+                        <div style={{ marginTop: '6px', fontSize: '12px', fontWeight: '700', color: (parseFloat(splitCash||0)+parseFloat(splitUpi||0)) === total ? '#2E7D32' : '#E64A19' }}>
+                          {(parseFloat(splitCash||0)+parseFloat(splitUpi||0)) === total ? '✅ Balanced' : `⚠️ Sum: ₹${(parseFloat(splitCash||0)+parseFloat(splitUpi||0)).toFixed(0)} (need ₹${total.toFixed(0)})`}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' }}>
                     <button onClick={printBill} style={{ padding: '10px', background: '#fff', color: '#FC8019', border: '2px solid #FC8019', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>🖨️ Print</button>
                     <button onClick={sendWhatsApp} style={{ padding: '10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>📱 WhatsApp</button>
@@ -2375,6 +2432,13 @@ export default function CafePOS() {
               )}
             </div>
 
+            {/* Custom Menu Domain */}
+            <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#000', fontWeight: '800' }}>🌐 Custom Menu URL</h3>
+              <p style={{ fontSize: '13px', color: '#666', fontWeight: '600', marginBottom: '12px' }}>Set your custom domain for QR codes (e.g. https://menu.atkaapfi.com). Leave blank to use current site URL.</p>
+              <input type="text" placeholder="https://menu.atkaapfi.com" defaultValue={settings.menuDomain || ''} onBlur={e => updateSettings({ ...settings, menuDomain: e.target.value.trim() })} style={{ width: '100%', padding: '12px', border: '2px solid #FC8019', borderRadius: '8px', fontSize: '14px', color: '#000', fontWeight: '700', boxSizing: 'border-box' }} />
+            </div>
+
             {/* Per-Table QR Codes */}
             <div style={{ background: '#fff', padding: '20px', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 4px', color: '#000', fontWeight: '800' }}>📱 Per-Table QR Codes</h3>
@@ -2382,7 +2446,8 @@ export default function CafePOS() {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
                 {[1, 2, 3, 4, 'TA'].map(t => {
                   const label = t === 'TA' ? 'Takeaway' : `Table ${t}`;
-                  const url = `${window.location.origin}?tab=publicmenu&table=${t}`;
+                  const menuDomain = settings.menuDomain || window.location.origin;
+                  const url = `${menuDomain}?tab=publicmenu&table=${t}`;
                   return (
                     <div key={t} style={{ background: '#f9f9f9', borderRadius: '10px', padding: '14px', textAlign: 'center', border: '1px solid #eee' }}>
                       <div style={{ fontSize: '13px', fontWeight: '800', color: '#000', marginBottom: '10px' }}>{label}</div>
@@ -2578,7 +2643,7 @@ export default function CafePOS() {
         {/* PUBLIC MENU TAB - Customer View */}
         {/* PUBLIC MENU TAB - Customer View */}
         {activeTab === 'publicmenu' && (
-          <div style={{ margin: '-24px', background: '#0F2347', minHeight: '100vh' }}>
+          <div style={{ margin: '0', background: '#0F2347', minHeight: '100vh' }}>
             <style>{`
               @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900;1000&display=swap');
               .pm, .pm * { font-family: 'Nunito', system-ui, sans-serif !important; color: #fff; }
@@ -2617,9 +2682,10 @@ export default function CafePOS() {
                   const isOccupied = t !== 'T/A' && tableStatus[t] === 'occupied';
                   const isSelected = selectedTable === t;
                   return (
-                    <button key={t} disabled={isOccupied} onClick={() => setSelectedTable(isSelected ? null : t)} style={{ flexShrink: 0, padding: '10px 22px', background: 'transparent', border: 'none', borderBottom: isSelected ? '3px solid #3A6CC5' : '3px solid transparent', cursor: isOccupied ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '900', color: isSelected ? '#3A6CC5' : isOccupied ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.75)' }}>{t === 'T/A' ? 'Takeaway' : `Table ${t}`}</div>
+                    <button key={t} onClick={() => setSelectedTable(isSelected ? null : t)} style={{ flexShrink: 0, padding: '10px 22px', background: isOccupied ? 'rgba(255,100,0,0.1)' : 'transparent', border: 'none', borderBottom: isSelected ? '3px solid #3A6CC5' : isOccupied ? '3px solid #ff6b6b' : '3px solid transparent', cursor: 'pointer', whiteSpace: 'nowrap', borderRadius: '4px 4px 0 0' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '900', color: isSelected ? '#3A6CC5' : isOccupied ? '#ffaa66' : 'rgba(255,255,255,0.75)' }}>{t === 'T/A' ? 'Takeaway' : `Table ${t}`}</div>
                       <div style={{ fontSize: '11px', fontWeight: '700', color: isOccupied ? '#ff6b6b' : isSelected ? '#3A6CC5' : 'rgba(255,255,255,0.4)', marginTop: '1px' }}>{isOccupied ? '🔴 Occupied' : isSelected ? '✓ Selected' : 'Tap to select'}</div>
+                      {isOccupied && <div style={{ fontSize: '10px', fontWeight: '700', color: '#ffaa66', marginTop: '1px' }}>+ Add more</div>}
                     </button>
                   );
                 })}
@@ -2696,7 +2762,7 @@ export default function CafePOS() {
 
               {/* ── CATEGORY CIRCLES ── */}
               <div className="pm-scroll" style={{ display: 'flex', gap: '14px', overflowX: 'auto', padding: '10px 0 16px' }}>
-                {['All', ...new Set(menuItems.map(i => i.category))].map(cat => {
+                {['All', ...menuItems.reduce((acc, i) => { const c = (i.category || '').trim(); if (c && !acc.some(x => x.toLowerCase() === c.toLowerCase())) acc.push(c); return acc; }, [])].map(cat => {
                   const catEmoji = cat==='All'?'🔥':cat==='Kaapfi Hot'?'☕':cat==='Cold Brew'?'❄️':cat==='Iced Filter'?'🧊':cat==='Idli'?'🍚':cat==='Malabar Paratha'?'🫓':'🍽️';
                   const isActive = selectedCategory === cat;
                   return (
@@ -2733,12 +2799,12 @@ export default function CafePOS() {
                           {isOOS ? (
                             <span style={{ fontSize: '11px', fontWeight: '800', color: 'rgba(255,255,255,0.35)', background: 'rgba(255,255,255,0.07)', padding: '6px 10px', borderRadius: '6px' }}>Unavailable</span>
                           ) : !inCart ? (
-                            <button onClick={() => handlePublicAddToCart(item)} style={{ background: '#3A6CC5', color: '#0F2347', border: 'none', borderRadius: '6px', padding: '7px 14px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}>+</button>
+                            <button onClick={() => handlePublicAddToCart(item)} style={{ background: '#3A6CC5', color: '#fff', border: 'none', borderRadius: '6px', padding: '7px 14px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}>+</button>
                           ) : (
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                               <button onClick={() => setCustomerMenuOrder(customerMenuOrder.map(i=>i.id===item.id?{...i,quantity:i.quantity-1}:i).filter(i=>i.quantity>0))} style={{ background: 'rgba(255,255,255,0.08)', color: '#3A6CC5', border: '1.5px solid #3A6CC5', borderRadius: '6px', width: '28px', height: '28px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
                               <span style={{ fontSize: '15px', fontWeight: '900', color: '#fff', minWidth: '16px', textAlign: 'center' }}>{inCart.quantity}</span>
-                              <button onClick={() => handlePublicAddToCart(item)} style={{ background: '#3A6CC5', color: '#0F2347', border: 'none', borderRadius: '6px', width: '28px', height: '28px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                              <button onClick={() => handlePublicAddToCart(item)} style={{ background: '#3A6CC5', color: '#fff', border: 'none', borderRadius: '6px', width: '28px', height: '28px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                             </div>
                           )}
                         </div>
@@ -2799,14 +2865,14 @@ export default function CafePOS() {
                         <div style={{ fontSize: '24px' }}>{item.emoji || '🍽️'}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff', lineHeight: 1.2 }}>{item.name}</div>
-                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.55)', fontWeight: '600', marginTop: '2px' }}>₹{item.price} each</div>
+                          <div style={{ fontSize: '12px', color: '#fff', fontWeight: '600', marginTop: '2px' }}>₹{item.price} each</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <button onClick={() => setCustomerMenuOrder(customerMenuOrder.map(i => i.id === item.id ? {...i, quantity: i.quantity - 1} : i).filter(i => i.quantity > 0))} style={{ background: 'rgba(255,255,255,0.1)', color: '#3A6CC5', border: '1.5px solid #3A6CC5', borderRadius: '6px', width: '28px', height: '28px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
                           <span style={{ fontSize: '15px', fontWeight: '900', color: '#fff', minWidth: '20px', textAlign: 'center' }}>{item.quantity}</span>
-                          <button onClick={() => handlePublicAddToCart(item)} style={{ background: '#3A6CC5', color: '#0F2347', border: 'none', borderRadius: '6px', width: '28px', height: '28px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                          <button onClick={() => handlePublicAddToCart(item)} style={{ background: '#3A6CC5', color: '#fff', border: 'none', borderRadius: '6px', width: '28px', height: '28px', fontWeight: '900', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
                         </div>
-                        <div style={{ fontSize: '15px', fontWeight: '900', color: '#3A6CC5', minWidth: '48px', textAlign: 'right' }}>₹{item.price * item.quantity}</div>
+                        <div style={{ fontSize: '15px', fontWeight: '900', color: '#fff', minWidth: '48px', textAlign: 'right' }}>₹{item.price * item.quantity}</div>
                       </div>
                     ))}
                   </div>
