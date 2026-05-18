@@ -2105,15 +2105,11 @@ export default function CafePOS() {
                             <div style={{ fontSize: '10px', color: '#c8e0f4', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{order.paymentMethod || 'cash'}</div>
                           </div>
                         </div>
-                        {/* Summary item list */}
-                        <div style={{ fontSize: '12px', color: 'rgba(200,224,244,0.7)', margin: '6px 0 10px', lineHeight: '1.5' }}>
-                          {(order.items || []).map(i => `${i.name} ×${i.quantity}`).join(' · ')}
-                        </div>
                         {/* Action buttons */}
-                        <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: '7px', flexWrap: 'wrap', marginTop: '10px' }}>
                           <button onClick={() => setExpandedBillId(isExpanded ? null : order.id)}
-                            style={{ padding: '7px 14px', background: isExpanded ? '#FC8019' : 'rgba(252,128,25,0.15)', color: isExpanded ? '#fff' : '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '800' }}>
-                            {isExpanded ? '▲ Hide Bill' : '👁 View Bill'}
+                            style={{ padding: '7px 18px', background: isExpanded ? '#FC8019' : 'rgba(252,128,25,0.15)', color: isExpanded ? '#fff' : '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '900' }}>
+                            {isExpanded ? '▲ Close' : '👁 View'}
                           </button>
                           {!isPaid
                             ? <button onClick={() => { if(window.confirm(`Confirm ₹${orderTotal.toFixed(0)} received from ${order.customerName}?`)) markPaymentPaid(order.id); }}
