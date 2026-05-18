@@ -130,6 +130,9 @@ async function saveUpsellItemsToCloud(items) {
 async function saveUpsellSettingsToCloud(cfg) {
   try { await setDoc(doc(db, "appData", "upsellSettings"), { ...cfg, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
+async function saveCategoriesToCloud(cats) {
+  try { await setDoc(doc(db, "appData", "categories"), { items: cats, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
 async function trackUpsellEvent(sessionId, eventType, itemId, cartValue) {
   try { await addDoc(collection(db, "upsellEvents"), { sessionId, eventType, itemId: itemId || null, cartValue, timestamp: new Date().toISOString(), date: new Date().toISOString().split('T')[0] }); } catch (e) {}
 }
@@ -404,6 +407,17 @@ export default function CafePOS() {
       }
     });
 
+    // CATEGORIES - Real-time sync (persists custom categories like "Sandwiches")
+    const unsubCategories = onSnapshot(doc(db, "appData", "categories"), (snap) => {
+      if (snap.exists()) {
+        const cats = snap.data().items || [];
+        if (cats.length > 0) {
+          setCustomCategories(cats);
+          localStorage.setItem('customCategories', JSON.stringify(cats));
+        }
+      }
+    });
+
     // SOPs - Real-time sync
     const unsubSOPs = onSnapshot(doc(db, "appData", "sops"), (snap) => {
       if (snap.exists()) {
@@ -502,7 +516,7 @@ export default function CafePOS() {
         setActiveTableSession(active.length > 0 ? active : null);
       });
     }
-    return () => { unsubMenu(); unsubSettings(); unsubTableStatus(); unsubUpsell(); unsubUpsellSettings(); unsubSession(); };
+    return () => { unsubMenu(); unsubSettings(); unsubTableStatus(); unsubUpsell(); unsubUpsellSettings(); unsubSession(); unsubCategories(); };
   }, [isPublicMenuMode]);
 
   // Load customers when tab opened
@@ -510,11 +524,11 @@ export default function CafePOS() {
     if (activeTab === 'customers' && isLoggedIn) loadAllCustomers();
   }, [activeTab, isLoggedIn]);
 
-  // Auto-populate custom categories from menu if empty
+  // Auto-populate custom categories from menu if empty (also persists to Firestore)
   useEffect(() => {
     if (customCategories.length === 0 && menuItems.length > 0) {
       const cats = [...new Set(menuItems.map(i => (i.category || '').trim()).filter(Boolean))];
-      if (cats.length > 0) { setCustomCategories(cats); localStorage.setItem('customCategories', JSON.stringify(cats)); }
+      if (cats.length > 0) { setCustomCategories(cats); localStorage.setItem('customCategories', JSON.stringify(cats)); saveCategoriesToCloud(cats); }
     }
   }, [menuItems]); // eslint-disable-line
 
@@ -720,6 +734,29 @@ export default function CafePOS() {
     setSelectedTable(null);
   };
 
+  // Helper: merge new items into an existing order document (for occupied tables)
+  const mergeItemsIntoExistingOrder = async (existingOrder, newItems, paymentStatus) => {
+    // Merge: combine existing items and new items, incrementing quantity for duplicates
+    const merged = [...existingOrder.items];
+    newItems.forEach(newItem => {
+      const idx = merged.findIndex(m => m.name === newItem.name);
+      if (idx >= 0) { merged[idx] = { ...merged[idx], quantity: (merged[idx].quantity || 1) + (newItem.quantity || 1) }; }
+      else { merged.push({ ...newItem }); }
+    });
+    const newSubtotal = merged.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+    const newTax = Math.round(newSubtotal * (settings.taxRate || 0) / 100);
+    const newTotal = newSubtotal + newTax;
+    await updateDoc(doc(db, "orders", existingOrder.firebaseDocId), {
+      items: merged,
+      subtotal: newSubtotal,
+      tax: newTax,
+      total: newTotal,
+      paymentStatus: paymentStatus === 'paid' ? 'paid' : existingOrder.paymentStatus || 'pending',
+      lastUpdated: new Date().toISOString(),
+    });
+    return true;
+  };
+
   const completeOrder = async () => {
     if (currentOrder.length === 0) { alert('Add items'); return; }
     const stockCheck = checkStockAvailability(currentOrder);
@@ -729,12 +766,22 @@ export default function CafePOS() {
       else { if (!window.confirm(`⚠️ LOW STOCK:\n\n${msg}\n\nContinue?`)) return; }
     }
     setSyncStatus('syncing');
-    const order = buildOrderObject('paid');
-    const firebaseDocId = await saveOrderToFirebase(order);
-    if (customerPhone.length >= 10) await saveCustomer(customerPhone, order);
-    if (appliedPromo) {
-      const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
-      await savePromosToCloud(updatedPromos);
+    // If this is an occupied dine-in table, merge into existing order instead of creating a new one
+    const existingTableOrder = selectedTable && selectedTable !== 'T/A'
+      ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId)
+      : null;
+    if (existingTableOrder) {
+      await mergeItemsIntoExistingOrder(existingTableOrder, currentOrder, 'paid');
+      if (customerPhone.length >= 10) await saveCustomer(customerPhone, existingTableOrder);
+    } else {
+      const order = buildOrderObject('paid');
+      const firebaseDocId = await saveOrderToFirebase(order);
+      if (customerPhone.length >= 10) await saveCustomer(customerPhone, order);
+      if (appliedPromo) {
+        const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
+        await savePromosToCloud(updatedPromos);
+      }
+      if (!firebaseDocId) { setSyncStatus('connected'); alert('⚠️ Check internet connection'); return; }
     }
     await deductInventory(currentOrder);
     // Mark table occupied if dine-in
@@ -743,7 +790,7 @@ export default function CafePOS() {
     }
     clearOrderForm();
     setSyncStatus('connected');
-    alert(firebaseDocId ? '✅ Order saved & synced!' : '⚠️ Check internet connection');
+    alert('✅ Order saved & synced!');
   };
 
   const placeOrderPending = async () => {
@@ -755,11 +802,20 @@ export default function CafePOS() {
       else { if (!window.confirm(`⚠️ LOW STOCK:\n\n${msg}\n\nContinue?`)) return; }
     }
     setSyncStatus('syncing');
-    const order = buildOrderObject('pending');
-    const firebaseDocId = await saveOrderToFirebase(order);
-    if (appliedPromo) {
-      const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
-      await savePromosToCloud(updatedPromos);
+    // If this is an occupied dine-in table, merge into existing order instead of creating a new one
+    const existingTableOrder = selectedTable && selectedTable !== 'T/A'
+      ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId)
+      : null;
+    if (existingTableOrder) {
+      await mergeItemsIntoExistingOrder(existingTableOrder, currentOrder, 'pending');
+    } else {
+      const order = buildOrderObject('pending');
+      const firebaseDocId = await saveOrderToFirebase(order);
+      if (appliedPromo) {
+        const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
+        await savePromosToCloud(updatedPromos);
+      }
+      if (!firebaseDocId) { setSyncStatus('connected'); alert('⚠️ Check internet connection'); return; }
     }
     await deductInventory(currentOrder);
     // Mark table occupied if dine-in
@@ -768,7 +824,7 @@ export default function CafePOS() {
     }
     clearOrderForm();
     setSyncStatus('connected');
-    alert(firebaseDocId ? '⏳ Order placed! Payment pending — collect later from Bills tab.' : '⚠️ Check internet connection');
+    alert('⏳ Items added to table bill! Payment pending — collect from Bills tab.');
   };
 
   const bulkDeleteBills = async () => {
@@ -1437,15 +1493,12 @@ export default function CafePOS() {
                   const isSelected = selectedTable === t;
                   return (
                     <div key={t} onClick={() => {
-                      if (isSelected) { setSelectedTable(null); }
+                      if (isSelected) { setSelectedTable(null); setCurrentOrder([]); }
                       else {
                         setSelectedTable(t);
-                        if (occupied) {
-                          const existingOrder = orders.find(o => String(o.tableNumber) === String(t) && (o.status || '') !== 'delivered');
-                          if (existingOrder && existingOrder.items && existingOrder.items.length > 0) {
-                            setCurrentOrder([...existingOrder.items]);
-                          }
-                        }
+                        // Do NOT pre-load existing items — waiter adds only new items.
+                        // Existing order is shown in the "Current Bill" reference panel below.
+                        setCurrentOrder([]);
                       }
                     }}
                       style={{ flex: '1', minWidth: '80px', background: isSelected ? '#FC8019' : occupied ? 'rgba(230,74,25,0.15)' : 'rgba(76,175,80,0.1)', border: `2px solid ${isSelected ? '#E64A19' : occupied ? '#E64A19' : '#4CAF50'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
@@ -1468,6 +1521,33 @@ export default function CafePOS() {
                   <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'T/A' ? '#fff' : '#90CAF9' }}>{selectedTable === 'T/A' ? 'Selected' : 'Takeaway'}</div>
                 </div>
               </div>
+
+              {/* ── CURRENT BILL PANEL — shown when an occupied table is selected ── */}
+              {selectedTable && selectedTable !== 'T/A' && tableStatus[selectedTable] === 'occupied' && (() => {
+                const runningOrder = orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered');
+                if (!runningOrder) return null;
+                const runningTotal = runningOrder.items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+                return (
+                  <div style={{ background: '#0d1f35', border: '2px solid #FC8019', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '900', color: '#FC8019' }}>📋 Current Bill — Table {selectedTable}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '900', color: '#fff', background: runningOrder.paymentStatus === 'paid' ? '#1B5E20' : '#B71C1C', padding: '3px 12px', borderRadius: '20px' }}>
+                        {runningOrder.paymentStatus === 'paid' ? '✅ PAID' : '🔴 PENDING'} · ₹{runningTotal}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {runningOrder.items.map((item, idx) => (
+                        <span key={idx} style={{ background: 'rgba(252,128,25,0.12)', border: '1px solid rgba(252,128,25,0.3)', borderRadius: '8px', padding: '4px 10px', fontSize: '12px', fontWeight: '700', color: '#c8e0f4' }}>
+                          {item.emoji} {item.name} ×{item.quantity}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.45)', fontWeight: '600' }}>
+                      ➕ Select new items below — they will be added to this bill
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 {categories.map(cat => (
@@ -1916,12 +1996,19 @@ export default function CafePOS() {
                           {order.tableNumber && <span style={{ fontSize: '12px', background: 'rgba(156,39,176,0.3)', color: '#CE93D8', padding: '3px 10px', borderRadius: '10px', fontWeight: '900', border: '1px solid rgba(156,39,176,0.4)' }}>{order.tableNumber === 'T/A' ? '📦 T/A' : `🪑 Table ${order.tableNumber}`}</span>}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          {order.paymentStatus === 'paid'
-                            ? <span style={{ fontSize: '12px', background: '#1B5E20', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>✅ PAID</span>
-                            : order.paymentStatus === 'partial'
-                            ? <><span style={{ fontSize: '12px', background: '#F57F17', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>⚡ PARTIAL</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '11px', background: 'rgba(252,128,25,0.2)', color: '#FC8019', border: '1px solid #FC8019', padding: '3px 10px', borderRadius: '8px', fontWeight: '800', cursor: 'pointer' }}>Mark Paid</button></>
-                            : <><span style={{ fontSize: '12px', background: '#B71C1C', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>🔴 PAYMENT PENDING</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '11px', background: 'rgba(252,128,25,0.2)', color: '#FC8019', border: '1px solid #FC8019', padding: '3px 10px', borderRadius: '8px', fontWeight: '800', cursor: 'pointer' }}>Mark Paid</button></>
-                          }
+                          {order.paymentStatus === 'paid' ? (
+                            <span style={{ fontSize: '12px', background: '#1B5E20', color: '#fff', padding: '4px 14px', borderRadius: '20px', fontWeight: '900' }}>✅ PAID</span>
+                          ) : order.paymentStatus === 'partial' ? (
+                            <>
+                              <span style={{ fontSize: '12px', background: '#F57F17', color: '#fff', padding: '4px 14px', borderRadius: '20px', fontWeight: '900' }}>⚡ PARTIAL PAYMENT</span>
+                              <button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '12px', background: '#4CAF50', color: '#fff', border: 'none', padding: '5px 14px', borderRadius: '20px', fontWeight: '900', cursor: 'pointer' }}>✔ Mark Fully Paid</button>
+                            </>
+                          ) : (
+                            <>
+                              <span style={{ fontSize: '12px', background: '#B71C1C', color: '#fff', padding: '4px 14px', borderRadius: '20px', fontWeight: '900' }}>🔴 PAYMENT PENDING · ₹{order.total || 0}</span>
+                              <button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '12px', background: '#4CAF50', color: '#fff', border: 'none', padding: '5px 14px', borderRadius: '20px', fontWeight: '900', cursor: 'pointer' }}>✔ Collect & Mark Paid</button>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
@@ -2064,14 +2151,14 @@ export default function CafePOS() {
                 {customCategories.map(cat => (
                   <span key={cat} style={{ background: 'rgba(252,128,25,0.15)', border: '1.5px solid #FC8019', borderRadius: '20px', padding: '5px 12px', fontSize: '12px', fontWeight: '800', color: '#FC8019', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                     {cat}
-                    <button onClick={() => { const u = customCategories.filter(c => c !== cat); setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); }} style={{ background: 'none', border: 'none', color: '#FC8019', cursor: 'pointer', fontWeight: '900', fontSize: '15px', padding: '0', lineHeight: '1' }}>×</button>
+                    <button onClick={() => { const u = customCategories.filter(c => c !== cat); setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); saveCategoriesToCloud(u); }} style={{ background: 'none', border: 'none', color: '#FC8019', cursor: 'pointer', fontWeight: '900', fontSize: '15px', padding: '0', lineHeight: '1' }}>×</button>
                   </span>
                 ))}
                 {customCategories.length === 0 && <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: '600' }}>No categories yet — add below</span>}
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input placeholder="New category (e.g. Tea, Snacks, Desserts)..." value={newCategoryInput} onChange={e => setNewCategoryInput(e.target.value)} onKeyPress={e => { if (e.key !== 'Enter') return; const v = newCategoryInput.trim(); if (!v || customCategories.includes(v)) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); setNewCategoryInput(''); }} style={{ flex: 1, padding: '9px 12px', border: '1.5px solid #FC8019', borderRadius: '8px', fontSize: '13px', fontWeight: '700', color: '#000' }} />
-                <button onClick={() => { const v = newCategoryInput.trim(); if (!v || customCategories.includes(v)) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); setNewCategoryInput(''); }} style={{ padding: '9px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '900', cursor: 'pointer', fontSize: '14px' }}>+ Add</button>
+                <input placeholder="New category (e.g. Tea, Snacks, Desserts)..." value={newCategoryInput} onChange={e => setNewCategoryInput(e.target.value)} onKeyPress={e => { if (e.key !== 'Enter') return; const v = newCategoryInput.trim(); if (!v || customCategories.some(c => c.toLowerCase() === v.toLowerCase())) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); saveCategoriesToCloud(u); setNewCategoryInput(''); }} style={{ flex: 1, padding: '9px 12px', border: '1.5px solid #FC8019', borderRadius: '8px', fontSize: '13px', fontWeight: '700', color: '#000' }} />
+                <button onClick={() => { const v = newCategoryInput.trim(); if (!v || customCategories.some(c => c.toLowerCase() === v.toLowerCase())) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); saveCategoriesToCloud(u); setNewCategoryInput(''); }} style={{ padding: '9px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '900', cursor: 'pointer', fontSize: '14px' }}>+ Add</button>
               </div>
             </div>
 
