@@ -1111,30 +1111,45 @@ export default function CafePOS() {
   const completeOrder = async () => {
     if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
     setSyncStatus('syncing');
+    const itemsSnapshot = [...currentOrder];
     try {
-      // Only merge into today's order — never absorb old zombie orders from previous days
       const existingTableOrder = selectedTable && selectedTable !== 'T/A'
         ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId && isTodayOrder(o))
         : null;
       if (existingTableOrder) {
-        await mergeItemsIntoExistingOrder(existingTableOrder, currentOrder, 'paid');
-        if (customerPhone.length >= 10) await saveCustomer(customerPhone, existingTableOrder);
+        // Merge path — still needs to await to know it succeeded
+        await mergeItemsIntoExistingOrder(existingTableOrder, itemsSnapshot, 'paid');
+        // Fire-and-forget background tasks
+        if (customerPhone.length >= 10) saveCustomer(customerPhone, existingTableOrder);
       } else {
-        const kotNum = await getNextKOTNumber();
-        const order = { ...buildOrderObject('paid'), kotNumber: kotNum };
-        const firebaseDocId = await saveOrderToFirebase(order);
+        // Start KOT counter fetch in parallel while we build the order
+        const kotNumPromise = getNextKOTNumber();
+        // Save order with a temp KOT number immediately so kitchen sees it fast
+        const tempOrder = { ...buildOrderObject('paid'), kotNumber: null };
+        const firebaseDocId = await saveOrderToFirebase(tempOrder);
         if (!firebaseDocId) {
           setSyncStatus('offline');
           alert('❌ Order could not be saved. Check your internet and try again.');
           return;
         }
-        if (customerPhone.length >= 10) await saveCustomer(customerPhone, order);
+        // Order is in Firestore — kitchen sees it now. Clear form immediately.
+        if (selectedTable && selectedTable !== 'T/A') {
+          const u = { ...tableStatus, [selectedTable]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u);
+        }
+        clearOrderForm();
+        setSyncStatus('connected');
+        // Background: update with real KOT number, save customer, promo, inventory
+        kotNumPromise.then(kotNum => {
+          updateDoc(doc(db, 'orders', firebaseDocId), { kotNumber: kotNum }).catch(() => {});
+        });
+        if (customerPhone.length >= 10) saveCustomer(customerPhone, { ...tempOrder, firebaseDocId });
         if (appliedPromo) {
           const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
-          await savePromosToCloud(updatedPromos);
+          savePromosToCloud(updatedPromos);
         }
+        deductInventory(itemsSnapshot);
+        return;
       }
-      await deductInventory(currentOrder);
       if (selectedTable && selectedTable !== 'T/A') {
         const u = { ...tableStatus, [selectedTable]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u);
       }
@@ -1150,29 +1165,39 @@ export default function CafePOS() {
   const placeOrderPending = async () => {
     if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
     setSyncStatus('syncing');
+    const itemsSnapshot = [...currentOrder];
     try {
-      // Only merge into today's order — never absorb old zombie orders from previous days
       const existingTableOrder = selectedTable && selectedTable !== 'T/A'
         ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId && isTodayOrder(o))
         : null;
       if (existingTableOrder) {
-        await mergeItemsIntoExistingOrder(existingTableOrder, currentOrder, 'pending');
+        await mergeItemsIntoExistingOrder(existingTableOrder, itemsSnapshot, 'pending');
       } else {
-        const kotNum = await getNextKOTNumber();
-        const order = { ...buildOrderObject('pending'), kotNumber: kotNum };
-        const firebaseDocId = await saveOrderToFirebase(order);
+        const kotNumPromise = getNextKOTNumber();
+        const tempOrder = { ...buildOrderObject('pending'), kotNumber: null };
+        const firebaseDocId = await saveOrderToFirebase(tempOrder);
         if (!firebaseDocId) {
           setSyncStatus('offline');
           alert('❌ Order could not be saved. Check your internet and try again.');
           return;
         }
+        // Order saved — kitchen sees it. Update table and clear form immediately.
+        if (selectedTable && selectedTable !== 'T/A') {
+          const u = { ...tableStatus, [selectedTable]: 'occupied' }; setTableStatus(u); saveTableStatusToCloud(u);
+        }
+        clearOrderForm();
+        setSyncStatus('connected');
+        // Background tasks
+        kotNumPromise.then(kotNum => {
+          updateDoc(doc(db, 'orders', firebaseDocId), { kotNumber: kotNum }).catch(() => {});
+        });
         if (appliedPromo) {
           const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
-          await savePromosToCloud(updatedPromos);
+          savePromosToCloud(updatedPromos);
         }
+        deductInventory(itemsSnapshot);
+        return;
       }
-      await deductInventory(currentOrder);
-      // Mark table occupied if dine-in
       if (selectedTable && selectedTable !== 'T/A') {
         const u = { ...tableStatus, [selectedTable]: 'occupied' }; setTableStatus(u); saveTableStatusToCloud(u);
       }
