@@ -634,7 +634,8 @@ export default function CafePOS() {
       if (snap.exists()) {
         const data = snap.data().data || { 1: 'available', 2: 'available', 3: 'available', 4: 'available' };
         setOrders(prev => {
-          const activeTableNums = new Set(prev.filter(o => (o.status || '') !== 'delivered' && o.tableNumber && o.tableNumber !== 'T/A').map(o => String(o.tableNumber)));
+          const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+          const activeTableNums = new Set(prev.filter(o => (o.status || '') !== 'delivered' && o.tableNumber && o.tableNumber !== 'T/A' && (o.timestamp ? new Date(o.timestamp).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) === today : false)).map(o => String(o.tableNumber)));
           const cleaned = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, activeTableNums.has(String(k)) ? v : 'available']));
           setTableStatus(cleaned);
           return prev;
@@ -1075,13 +1076,20 @@ export default function CafePOS() {
     return true;
   };
 
+  const isTodayOrder = (o) => {
+    if (!o.timestamp) return false;
+    const d = new Date(o.timestamp);
+    const now = new Date();
+    return d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) === now.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
+  };
+
   const completeOrder = async () => {
     if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
     setSyncStatus('syncing');
     try {
-      // If this is an occupied dine-in table, merge into existing order instead of creating a new one
+      // Only merge into today's order — never absorb old zombie orders from previous days
       const existingTableOrder = selectedTable && selectedTable !== 'T/A'
-        ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId)
+        ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId && isTodayOrder(o))
         : null;
       if (existingTableOrder) {
         await mergeItemsIntoExistingOrder(existingTableOrder, currentOrder, 'paid');
@@ -1118,9 +1126,9 @@ export default function CafePOS() {
     if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
     setSyncStatus('syncing');
     try {
-      // If this is an occupied dine-in table, merge into existing order instead of creating a new one
+      // Only merge into today's order — never absorb old zombie orders from previous days
       const existingTableOrder = selectedTable && selectedTable !== 'T/A'
-        ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId)
+        ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId && isTodayOrder(o))
         : null;
       if (existingTableOrder) {
         await mergeItemsIntoExistingOrder(existingTableOrder, currentOrder, 'pending');
