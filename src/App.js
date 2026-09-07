@@ -429,6 +429,9 @@ export default function CafePOS() {
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [lockedTable, setLockedTable] = useState(null); // set from QR URL ?table=X, never changed by customer
   const [activeTableSession, setActiveTableSession] = useState(null); // existing orders on locked table
+  const [staffMode, setStaffMode] = useState(true); // hides manager tabs by default
+  const [managerPinInput, setManagerPinInput] = useState('');
+  const [showManagerPinDialog, setShowManagerPinDialog] = useState(false);
   const [cashCalcInput, setCashCalcInput] = useState('');
   const [cashCalcBill, setCashCalcBill] = useState('');
   const [showContactExport, setShowContactExport] = useState(false);
@@ -1852,30 +1855,49 @@ export default function CafePOS() {
         </div>
       </header>}
 
-      {!isPublicMenuMode && <nav style={{ background: '#0A1929', display: 'flex', borderBottom: '2px solid rgba(255,255,255,0.08)', padding: '0 24px', overflowX: 'auto', gap: '4px', boxShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>
+      {/* Manager PIN unlock dialog */}
+      {showManagerPinDialog && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#0A1929', border: '2px solid #FC8019', borderRadius: '16px', padding: '32px', width: '300px', textAlign: 'center' }}>
+            <div style={{ fontSize: '32px', marginBottom: '8px' }}>🔒</div>
+            <div style={{ fontSize: '18px', fontWeight: '900', color: '#fff', marginBottom: '4px' }}>Manager Access</div>
+            <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginBottom: '20px' }}>Enter manager password</div>
+            <input type="password" value={managerPinInput} onChange={e => setManagerPinInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { if (managerPinInput === CAFE_PASSWORD) { setStaffMode(false); setShowManagerPinDialog(false); setManagerPinInput(''); } else { alert('Wrong password'); setManagerPinInput(''); } } }}
+              placeholder="Password" autoFocus
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1.5px solid rgba(255,255,255,0.2)', background: '#122B45', color: '#fff', fontSize: '16px', textAlign: 'center', boxSizing: 'border-box', marginBottom: '12px' }} />
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => { setShowManagerPinDialog(false); setManagerPinInput(''); }} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1.5px solid rgba(255,255,255,0.2)', background: 'transparent', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
+              <button onClick={() => { if (managerPinInput === CAFE_PASSWORD) { setStaffMode(false); setShowManagerPinDialog(false); setManagerPinInput(''); } else { alert('Wrong password'); setManagerPinInput(''); } }} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: 'none', background: '#FC8019', color: '#fff', fontWeight: '800', cursor: 'pointer', fontSize: '14px' }}>Unlock</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isPublicMenuMode && <nav style={{ background: '#0A1929', display: 'flex', borderBottom: '2px solid rgba(255,255,255,0.08)', padding: '0 12px', overflowX: 'auto', gap: '4px', boxShadow: '0 2px 12px rgba(0,0,0,0.4)', alignItems: 'center' }}>
         {[
-          { id: 'order', icon: '🛒', label: 'New Order' },
-          { id: 'bills', icon: '🧾', label: 'Bills' },
-          { id: 'kitchen', icon: '👨‍🍳', label: 'Kitchen' },
-          { id: 'summary', icon: '💼', label: 'Summary' },
-          { id: 'expenses', icon: '💸', label: 'Expenses' },
-          { id: 'inventory', icon: '📦', label: 'Inventory' },
-          { id: 'sops', icon: '📋', label: 'SOPs' },
-          { id: 'reports', icon: '📊', label: 'Reports' },
-          { id: 'marketing', icon: '🎯', label: 'Marketing' },
-          { id: 'menu', icon: '🍽️', label: 'Menu' },
-          { id: 'promos', icon: '🎁', label: 'Promos' },
-          { id: 'customers', icon: '👥', label: 'Customers' },
-          { id: 'menumanager', icon: '📸', label: 'Menu Manager' },
-          { id: 'publicmenu', icon: '🌐', label: 'Public Menu' },
-          { id: 'monitor', icon: '🔍', label: 'Monitor' },
-          { id: 'settings', icon: '⚙️', label: 'Settings' },
-        ].map(tab => {
+          { id: 'order', icon: '🛒', label: 'New Order', staffVisible: true },
+          { id: 'kitchen', icon: '👨‍🍳', label: 'Kitchen', staffVisible: true },
+          { id: 'bills', icon: '🧾', label: 'Bills', staffVisible: true },
+          { id: 'summary', icon: '💼', label: 'Summary', staffVisible: false },
+          { id: 'expenses', icon: '💸', label: 'Expenses', staffVisible: false },
+          { id: 'inventory', icon: '📦', label: 'Inventory', staffVisible: false },
+          { id: 'sops', icon: '📋', label: 'SOPs', staffVisible: false },
+          { id: 'reports', icon: '📊', label: 'Reports', staffVisible: false },
+          { id: 'marketing', icon: '🎯', label: 'Marketing', staffVisible: false },
+          { id: 'menu', icon: '🍽️', label: 'Menu', staffVisible: false },
+          { id: 'promos', icon: '🎁', label: 'Promos', staffVisible: false },
+          { id: 'customers', icon: '👥', label: 'Customers', staffVisible: false },
+          { id: 'menumanager', icon: '📸', label: 'Menu Manager', staffVisible: false },
+          { id: 'publicmenu', icon: '🌐', label: 'Public Menu', staffVisible: false },
+          { id: 'monitor', icon: '🔍', label: 'Monitor', staffVisible: false },
+          { id: 'settings', icon: '⚙️', label: 'Settings', staffVisible: false },
+        ].filter(tab => !staffMode || tab.staffVisible).map(tab => {
           const pendingCount = tab.id === 'kitchen'
             ? orders.filter(o => (o.status || 'new') !== 'delivered' && (o.status || 'new') !== 'served').length
             : 0;
           return (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '14px 14px', border: 'none', background: activeTab === tab.id ? 'rgba(252,128,25,0.12)' : 'transparent', color: activeTab === tab.id ? '#FC8019' : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === tab.id ? '800' : '600', borderBottom: activeTab === tab.id ? '3px solid #FC8019' : '3px solid transparent', borderRadius: '4px 4px 0 0', whiteSpace: 'nowrap', position: 'relative', transition: 'all 0.15s' }}>
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '14px 18px', border: 'none', background: activeTab === tab.id ? 'rgba(252,128,25,0.12)' : 'transparent', color: activeTab === tab.id ? '#FC8019' : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: staffMode ? '14px' : '12px', fontWeight: activeTab === tab.id ? '800' : '600', borderBottom: activeTab === tab.id ? '3px solid #FC8019' : '3px solid transparent', borderRadius: '4px 4px 0 0', whiteSpace: 'nowrap', position: 'relative', transition: 'all 0.15s' }}>
               {tab.icon} {tab.label}
               {pendingCount > 0 && (
                 <span style={{ position: 'absolute', top: '8px', right: '4px', background: '#E64A19', color: '#fff', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{pendingCount}</span>
@@ -1883,6 +1905,13 @@ export default function CafePOS() {
             </button>
           );
         })}
+        {/* Manager mode toggle */}
+        <div style={{ marginLeft: 'auto', flexShrink: 0, paddingLeft: '12px' }}>
+          {staffMode
+            ? <button onClick={() => setShowManagerPinDialog(true)} style={{ padding: '8px 14px', border: '1.5px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.45)', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>🔒 Manager</button>
+            : <button onClick={() => { setStaffMode(true); if (!['order','kitchen','bills'].includes(activeTab)) setActiveTab('order'); }} style={{ padding: '8px 14px', border: '1.5px solid #FC8019', background: 'rgba(252,128,25,0.1)', color: '#FC8019', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>🔓 Staff Mode</button>
+          }
+        </div>
       </nav>}
 
       <div style={{ maxWidth: isPublicMenuMode ? '100%' : '1400px', margin: '0 auto', padding: isPublicMenuMode ? '0' : '24px', boxSizing: 'border-box' }}>
