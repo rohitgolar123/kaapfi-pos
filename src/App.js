@@ -364,6 +364,7 @@ export default function CafePOS() {
   const [customerOrders, setCustomerOrders] = useState([]);
   const [settings, setSettings] = useState(defaultSettings);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [menuSearch, setMenuSearch] = useState('');
   const [manualDiscountType, setManualDiscountType] = useState('flat');
   const [manualDiscountValue, setManualDiscountValue] = useState(0);
   const [promoCode, setPromoCode] = useState('');
@@ -1547,7 +1548,11 @@ export default function CafePOS() {
   };
 
   const categories = ['All', ...menuItems.reduce((acc, item) => { const c = (item.category || '').trim(); if (c && !acc.some(x => x.toLowerCase() === c.toLowerCase())) acc.push(c); return acc; }, [])];
-  const filteredItems = selectedCategory === 'All' ? menuItems : menuItems.filter(item => item.category === selectedCategory);
+  const filteredItems = menuItems.filter(item => {
+    const q = menuSearch.trim().toLowerCase();
+    if (q) return item.name.toLowerCase().includes(q) || (item.category || '').toLowerCase().includes(q);
+    return selectedCategory === 'All' || item.category === selectedCategory;
+  });
   
   // Use ISO date for consistent comparison across devices
   const getISODate = (dateInput) => {
@@ -2013,11 +2018,24 @@ export default function CafePOS() {
                 );
               })()}
 
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', marginBottom: '14px' }}>
+                <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '18px', pointerEvents: 'none' }}>🔍</span>
+                <input
+                  type="text"
+                  value={menuSearch}
+                  onChange={e => setMenuSearch(e.target.value)}
+                  placeholder="Search item..."
+                  style={{ width: '100%', padding: '14px 14px 14px 44px', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.12)', background: '#122B45', color: '#fff', fontSize: '16px', fontWeight: '600', boxSizing: 'border-box', outline: 'none' }}
+                />
+                {menuSearch && (
+                  <button onClick={() => setMenuSearch('')} style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', width: '26px', height: '26px', color: '#fff', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+                )}
+              </div>
+              {!menuSearch && <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 {categories.map(cat => (
                   <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ padding: '8px 16px', borderRadius: '20px', border: selectedCategory === cat ? 'none' : '1.5px solid rgba(255,255,255,0.2)', background: selectedCategory === cat ? '#FC8019' : '#122B45', color: selectedCategory === cat ? '#fff' : '#c8e0f4', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}>{cat}</button>
                 ))}
-              </div>
+              </div>}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
                 {filteredItems.map(item => {
                   return (
