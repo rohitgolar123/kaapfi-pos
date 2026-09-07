@@ -433,6 +433,16 @@ export default function CafePOS() {
   const [staffMode, setStaffMode] = useState(true); // hides manager tabs by default
   const [managerPinInput, setManagerPinInput] = useState('');
   const [showManagerPinDialog, setShowManagerPinDialog] = useState(false);
+  const [viewModeOverride, setViewModeOverride] = useState(() => localStorage.getItem('kaapfi_viewMode') || 'auto');
+  const [windowMobile, setWindowMobile] = useState(() => window.innerWidth <= 768);
+  const isMobile = viewModeOverride === 'auto' ? windowMobile : viewModeOverride === 'mobile';
+  const [showMobileCart, setShowMobileCart] = useState(false);
+  useEffect(() => {
+    const onResize = () => setWindowMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const setViewMode = (mode) => { setViewModeOverride(mode); localStorage.setItem('kaapfi_viewMode', mode); };
   const [cashCalcInput, setCashCalcInput] = useState('');
   const [cashCalcBill, setCashCalcBill] = useState('');
   const [showContactExport, setShowContactExport] = useState(false);
@@ -1910,8 +1920,13 @@ export default function CafePOS() {
             </button>
           );
         })}
-        {/* Manager mode toggle */}
-        <div style={{ marginLeft: 'auto', flexShrink: 0, paddingLeft: '12px' }}>
+        {/* View mode toggle + Manager mode toggle */}
+        <div style={{ marginLeft: 'auto', flexShrink: 0, paddingLeft: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div style={{ display: 'flex', border: '1.5px solid rgba(255,255,255,0.15)', borderRadius: '8px', overflow: 'hidden' }}>
+            {[['mobile','📱'],['desktop','🖥️'],['auto','⚡']].map(([mode, icon]) => (
+              <button key={mode} onClick={() => setViewMode(mode)} title={mode === 'auto' ? 'Auto (follows screen size)' : `Force ${mode} view`} style={{ padding: '6px 10px', border: 'none', background: viewModeOverride === mode ? '#FC8019' : 'transparent', color: viewModeOverride === mode ? '#fff' : 'rgba(255,255,255,0.45)', cursor: 'pointer', fontSize: '13px' }}>{icon}</button>
+            ))}
+          </div>
           {staffMode
             ? <button onClick={() => setShowManagerPinDialog(true)} style={{ padding: '8px 14px', border: '1.5px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.45)', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>🔒 Manager</button>
             : <button onClick={() => { setStaffMode(true); if (!['order','kitchen','bills'].includes(activeTab)) setActiveTab('order'); }} style={{ padding: '8px 14px', border: '1.5px solid #FC8019', background: 'rgba(252,128,25,0.1)', color: '#FC8019', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>🔓 Staff Mode</button>
@@ -1919,10 +1934,10 @@ export default function CafePOS() {
         </div>
       </nav>}
 
-      <div style={{ maxWidth: isPublicMenuMode ? '100%' : '1400px', margin: '0 auto', padding: isPublicMenuMode ? '0' : '24px', boxSizing: 'border-box' }}>
+      <div style={{ maxWidth: isPublicMenuMode ? '100%' : '1400px', margin: '0 auto', padding: isPublicMenuMode ? '0' : isMobile ? '12px' : '24px', boxSizing: 'border-box' }}>
 
         {activeTab === 'order' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 420px', gap: '24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(0, 1fr) 420px', gap: '24px', paddingBottom: isMobile ? '90px' : '0' }}>
             <div>
               {/* ── FEATURE 12: HIGH-VISIBILITY ADD TO ACTIVE TABLE ── */}
               {Object.entries(tableStatus).some(([,v]) => v === 'occupied') && (
@@ -2036,12 +2051,13 @@ export default function CafePOS() {
                   <button key={cat} onClick={() => setSelectedCategory(cat)} style={{ padding: '8px 16px', borderRadius: '20px', border: selectedCategory === cat ? 'none' : '1.5px solid rgba(255,255,255,0.2)', background: selectedCategory === cat ? '#FC8019' : '#122B45', color: selectedCategory === cat ? '#fff' : '#c8e0f4', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}>{cat}</button>
                 ))}
               </div>}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(150px, 1fr))', gap: isMobile ? '10px' : '12px' }}>
                 {filteredItems.map(item => {
                   return (
-                    <div key={item.id} onClick={() => addToOrder(item)} style={{ background: item.outOfStock ? 'rgba(18,43,69,0.5)' : '#122B45', padding: '16px', borderRadius: '12px', cursor: item.outOfStock ? 'not-allowed' : 'pointer', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)', opacity: item.outOfStock ? 0.5 : 1 }}>
-                      <div style={{ fontSize: '36px', marginBottom: '8px', opacity: item.outOfStock ? 0.4 : 1 }}>{item.emoji}</div>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px', minHeight: '36px' }}>{item.name}{item.outOfStock ? ' 🚫' : ''}</div>
+                    <div key={item.id} onClick={() => addToOrder(item)} style={{ background: item.outOfStock ? 'rgba(18,43,69,0.5)' : '#122B45', padding: isMobile ? '14px 10px' : '16px', borderRadius: '12px', cursor: item.outOfStock ? 'not-allowed' : 'pointer', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)', opacity: item.outOfStock ? 0.5 : 1, position: 'relative' }}>
+                      {isMobile && currentOrder.find(o => o.id === item.id) && <span style={{ position: 'absolute', top: '6px', right: '6px', background: '#FC8019', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', fontSize: '11px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{currentOrder.find(o => o.id === item.id).quantity}</span>}
+                      <div style={{ fontSize: isMobile ? '30px' : '36px', marginBottom: '6px', opacity: item.outOfStock ? 0.4 : 1 }}>{item.emoji}</div>
+                      <div style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: '700', color: '#fff', marginBottom: '4px', minHeight: isMobile ? '30px' : '36px' }}>{item.name}{item.outOfStock ? ' 🚫' : ''}</div>
                       <div style={{ fontSize: '15px', color: '#FC8019', fontWeight: '800' }}>₹{item.price}</div>
                     </div>
                   );
@@ -2049,7 +2065,20 @@ export default function CafePOS() {
               </div>
             </div>
 
-            <div style={{ background: '#122B45', borderRadius: '12px', padding: '20px', height: 'fit-content', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+            {/* Mobile: floating cart button */}
+            {isMobile && (
+              <button onClick={() => setShowMobileCart(true)} style={{ position: 'fixed', bottom: '16px', left: '16px', right: '16px', zIndex: 500, padding: '16px', background: currentOrder.length > 0 ? 'linear-gradient(135deg,#4CAF50,#2E7D32)' : '#122B45', color: '#fff', border: currentOrder.length > 0 ? 'none' : '2px solid rgba(255,255,255,0.2)', borderRadius: '14px', fontWeight: '900', fontSize: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+                <span>🛒 {currentOrder.length > 0 ? `${currentOrder.reduce((s,i)=>s+i.quantity,0)} items` : 'Cart'}</span>
+                {currentOrder.length > 0 && <span style={{ background: 'rgba(255,255,255,0.2)', padding: '4px 14px', borderRadius: '20px' }}>₹{total.toFixed(0)}</span>}
+              </button>
+            )}
+            <div style={isMobile ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#0A1929', zIndex: 600, overflowY: 'auto', display: showMobileCart ? 'block' : 'none' } : { background: '#122B45', borderRadius: '12px', padding: '20px', height: 'fit-content', position: 'sticky', top: '100px', maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}>
+            {isMobile && <div style={{ background: '#122B45', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', position: 'sticky', top: 0, zIndex: 10, marginBottom: '12px' }}>
+              <button onClick={() => setShowMobileCart(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '28px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>←</button>
+              <span style={{ fontSize: '18px', fontWeight: '900', color: '#fff', flex: 1 }}>🛒 Order</span>
+              {selectedTable && <span style={{ background: '#FC8019', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>{selectedTable === 'T/A' ? '📦 T/A' : `🪑 Table ${selectedTable}`}</span>}
+            </div>}
+            <div style={isMobile ? { padding: '0 16px 100px' } : {}}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#fff' }}>🛒 Current Order ({currentOrder.length})</h3>
                 {selectedTable && <span style={{ background: '#FC8019', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>{selectedTable === 'T/A' ? '📦 Takeaway' : `🪑 Table ${selectedTable}`}</span>}
@@ -2187,11 +2216,12 @@ export default function CafePOS() {
                     <button onClick={printBill} style={{ padding: '10px', background: '#0F2236', color: '#FC8019', border: '2px solid #FC8019', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>🖨️ Print</button>
                     <button onClick={sendWhatsApp} style={{ padding: '10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>📱 WhatsApp</button>
                   </div>
-                  <button onClick={completeOrder} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: '15px', marginBottom: '8px' }}>✅ Complete &amp; Paid • ₹{total.toFixed(0)}</button>
-                  <button onClick={placeOrderPending} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, #FF9800 0%, #E65100 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: '14px' }}>⏳ Place Order — Pay Later • ₹{total.toFixed(0)}</button>
+                  <button onClick={completeOrder} style={{ width: '100%', padding: isMobile ? '18px' : '14px', background: 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: isMobile ? '17px' : '15px', marginBottom: '8px' }} onClick={() => { completeOrder(); if(isMobile) setShowMobileCart(false); }}>✅ Complete &amp; Paid • ₹{total.toFixed(0)}</button>
+                  <button style={{ width: '100%', padding: isMobile ? '16px' : '12px', background: 'linear-gradient(135deg, #FF9800 0%, #E65100 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: isMobile ? '15px' : '14px' }} onClick={() => { placeOrderPending(); if(isMobile) setShowMobileCart(false); }}>⏳ Place Order — Pay Later • ₹{total.toFixed(0)}</button>
                 </>
               )}
-            </div>
+            </div>{/* end mobile padding wrapper */}
+            </div>{/* end order panel */}
           </div>
         )}
 
