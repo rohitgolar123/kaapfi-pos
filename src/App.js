@@ -1077,11 +1077,6 @@ export default function CafePOS() {
 
   const completeOrder = async () => {
     if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
-    const stockCheck = checkStockAvailability(currentOrder);
-    if (!stockCheck.sufficient) {
-      const msg = stockCheck.insufficient.map(i => `• ${i.ingredient}: need ${i.needed}${i.unit}, have ${i.available}${i.unit}`).join('\n');
-      if (settings.preventNegativeStock) { alert(`❌ INSUFFICIENT STOCK!\n\n${msg}`); return; }
-    }
     setSyncStatus('syncing');
     try {
       // If this is an occupied dine-in table, merge into existing order instead of creating a new one
@@ -1121,11 +1116,6 @@ export default function CafePOS() {
 
   const placeOrderPending = async () => {
     if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
-    const stockCheck = checkStockAvailability(currentOrder);
-    if (!stockCheck.sufficient) {
-      const msg = stockCheck.insufficient.map(i => `• ${i.ingredient}: need ${i.needed}${i.unit}, have ${i.available}${i.unit}`).join('\n');
-      if (settings.preventNegativeStock) { alert(`❌ INSUFFICIENT STOCK!\n\n${msg}`); return; }
-    }
     setSyncStatus('syncing');
     try {
       // If this is an occupied dine-in table, merge into existing order instead of creating a new one
@@ -1993,16 +1983,11 @@ export default function CafePOS() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '12px' }}>
                 {filteredItems.map(item => {
-                  const remaining = getRemainingServings(item.name);
-                  const lowStock = remaining !== Infinity && remaining < 5;
                   return (
-                    <div key={item.id} onClick={() => addToOrder(item)} style={{ background: item.outOfStock ? 'rgba(18,43,69,0.5)' : '#122B45', padding: '16px', borderRadius: '12px', cursor: item.outOfStock ? 'not-allowed' : 'pointer', textAlign: 'center', border: lowStock ? '2px solid #E64A19' : '1px solid rgba(255,255,255,0.08)', opacity: item.outOfStock ? 0.5 : 1 }}>
+                    <div key={item.id} onClick={() => addToOrder(item)} style={{ background: item.outOfStock ? 'rgba(18,43,69,0.5)' : '#122B45', padding: '16px', borderRadius: '12px', cursor: item.outOfStock ? 'not-allowed' : 'pointer', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)', opacity: item.outOfStock ? 0.5 : 1 }}>
                       <div style={{ fontSize: '36px', marginBottom: '8px', opacity: item.outOfStock ? 0.4 : 1 }}>{item.emoji}</div>
                       <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px', minHeight: '36px' }}>{item.name}{item.outOfStock ? ' 🚫' : ''}</div>
                       <div style={{ fontSize: '15px', color: '#FC8019', fontWeight: '800' }}>₹{item.price}</div>
-                      {remaining !== Infinity && (
-                        <div style={{ fontSize: '10px', color: lowStock ? '#E64A19' : '#69F0AE', fontWeight: '700', marginTop: '4px' }}>{lowStock ? '⚠️ ' : '✓ '}{remaining} left</div>
-                      )}
                     </div>
                   );
                 })}
