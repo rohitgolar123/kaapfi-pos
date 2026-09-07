@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot, enableIndexedDbPersistence, orderBy } from "firebase/firestore";
+import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot, enableIndexedDbPersistence, clearIndexedDbPersistence, terminate, orderBy } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc",
@@ -14,11 +14,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-
-// Enable offline persistence for better real-time experience
-try {
-  enableIndexedDbPersistence(db).catch(() => {});
-} catch (e) {}
+try { enableIndexedDbPersistence(db).catch(() => {}); } catch (e) {}
 const CAFE_PASSWORD = "Kaapfi@737";
 const DELETE_PASSWORD = "9923022925";
 
@@ -72,6 +68,23 @@ const defaultMenu = [
   { id: 28, name: 'Chicken Achari', price: 99, category: 'Malabar Paratha', emoji: '🍗' },
   { id: 29, name: 'Smokey BBQ Chicken', price: 99, category: 'Malabar Paratha', emoji: '🔥' },
   { id: 30, name: 'Crispy Creamy Chicken', price: 125, category: 'Malabar Paratha', emoji: '🍗' },
+  // ── SANDWICHES ──────────────────────────────────────────────────────────────
+  { id: 90001, name: 'Evergreen Melt',                 price: 69,  category: 'Sandwiches', emoji: '🥗' },
+  { id: 90002, name: 'Veggie Tandoor Crunch',           price: 89,  category: 'Sandwiches', emoji: '🥙' },
+  { id: 90003, name: 'Chatpata Hustle (Paneer)',        price: 99,  category: 'Sandwiches', emoji: '🌶️' },
+  { id: 90004, name: 'Chatpata Hustle (Chicken)',       price: 99,  category: 'Sandwiches', emoji: '🌶️' },
+  { id: 90005, name: 'Thecha Theory Grill (Paneer)',    price: 99,  category: 'Sandwiches', emoji: '🔥' },
+  { id: 90006, name: 'Thecha Theory Grill (Chicken)',   price: 99,  category: 'Sandwiches', emoji: '🔥' },
+  { id: 90007, name: 'Smoky BBQ Streetwich (Paneer)',   price: 99,  category: 'Sandwiches', emoji: '🍖' },
+  { id: 90008, name: 'Smoky BBQ Streetwich (Chicken)',  price: 99,  category: 'Sandwiches', emoji: '🍗' },
+  { id: 90009, name: 'Awadhi Gold Grill (Paneer)',      price: 99,  category: 'Sandwiches', emoji: '👑' },
+  { id: 90010, name: 'Awadhi Gold Grill (Chicken)',     price: 99,  category: 'Sandwiches', emoji: '👑' },
+  { id: 90011, name: 'Velvet Makhan Grill (Paneer)',    price: 99,  category: 'Sandwiches', emoji: '🧈' },
+  { id: 90012, name: 'Velvet Makhan Grill (Chicken)',   price: 99,  category: 'Sandwiches', emoji: '🧈' },
+  { id: 90013, name: 'Creamy Roastwich (Chicken)',      price: 99,  category: 'Sandwiches', emoji: '🍗' },
+  { id: 90014, name: 'Saoji Fire Grill (Paneer)',       price: 99,  category: 'Sandwiches', emoji: '🌶️' },
+  { id: 90015, name: 'Saoji Fire Grill (Chicken)',      price: 99,  category: 'Sandwiches', emoji: '🌶️' },
+  { id: 90016, name: 'Extra Cheese Slice',              price: 20,  category: 'Sandwiches', emoji: '🧀' },
 ];
 
 const defaultInventory = [
@@ -96,6 +109,17 @@ const defaultSOPs = {
 };
 
 // FIREBASE HELPERS - ALL DATA SYNCED TO CLOUD
+
+// IST date helper — India Standard Time (UTC+5:30)
+// Prevents orders placed 12AM–5:30AM IST from appearing as "yesterday"
+function getISTDateStr() {
+  return new Date(Date.now() + 330 * 60 * 1000).toISOString().split('T')[0];
+}
+// Convert any timestamp to its IST date string for filtering
+function toISTDate(ts) {
+  if (!ts) return '';
+  try { return new Date(new Date(ts).getTime() + 330 * 60 * 1000).toISOString().split('T')[0]; } catch (e) { return ''; }
+}
 
 async function saveInventoryToCloud(inventory) {
   try { await setDoc(doc(db, "appData", "inventory"), { items: inventory, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
@@ -130,12 +154,98 @@ async function saveUpsellItemsToCloud(items) {
 async function saveUpsellSettingsToCloud(cfg) {
   try { await setDoc(doc(db, "appData", "upsellSettings"), { ...cfg, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
+async function saveCategoriesToCloud(cats) {
+  try { await setDoc(doc(db, "appData", "categories"), { items: cats, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// DATAGUARD v1.0 — Self-Healing Infrastructure
+// Auto-backup, detect corruption, auto-restore, incident logging
+// ═══════════════════════════════════════════════════════════════════════
+
+async function logIncident(type, message, severity = 'warning', data = {}) {
+  try {
+    await addDoc(collection(db, "incidents"), {
+      type, message, severity, data,
+      timestamp: new Date().toISOString(),
+      resolved: false, autoResolved: false,
+    });
+  } catch (e) { console.error('[DataGuard] logIncident failed:', e); }
+}
+
+async function backupMenuSnapshot(menuItems, source = 'auto') {
+  if (!menuItems || menuItems.length < 5) return false;
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const hour = new Date().getHours();
+    // Hourly timestamped backup
+    await setDoc(doc(db, "backups", `menu_${today}_h${hour}`), {
+      items: menuItems, count: menuItems.length,
+      categories: [...new Set(menuItems.map(i => i.category))],
+      savedAt: new Date().toISOString(), source,
+    });
+    // Daily "stable" snapshot (overwrites only when healthy)
+    await setDoc(doc(db, "backups", `menu_${today}`), {
+      items: menuItems, count: menuItems.length,
+      savedAt: new Date().toISOString(), source,
+    });
+    return true;
+  } catch (e) { return false; }
+}
+
+async function restoreMenuFromBackup() {
+  const dates = [];
+  for (let d = 0; d <= 7; d++) {
+    const date = new Date();
+    date.setDate(date.getDate() - d);
+    dates.push(date.toISOString().split('T')[0]);
+  }
+  for (const date of dates) {
+    try {
+      const snap = await getDoc(doc(db, "backups", `menu_${date}`));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.items && data.items.length > 10) {
+          return { items: data.items, date, source: data.source || 'backup' };
+        }
+      }
+    } catch (e) {}
+  }
+  return { items: defaultMenu, date: 'built-in', source: 'defaultMenu' };
+}
+
+async function resolveIncident(incidentId) {
+  try {
+    await updateDoc(doc(db, "incidents", incidentId), {
+      resolved: true, resolvedAt: new Date().toISOString()
+    });
+  } catch (e) {}
+}
+async function getNextKOTNumber() {
+  const today = getISTDateStr();
+  try {
+    const ref = doc(db, "appData", "kotCounter");
+    const snap = await getDoc(ref);
+    let newCount = 1;
+    if (snap.exists() && snap.data().date === today) {
+      newCount = (snap.data().count || 0) + 1;
+    }
+    await setDoc(ref, { count: newCount, date: today });
+    return newCount;
+  } catch (e) { return Date.now() % 1000; }
+}
 async function trackUpsellEvent(sessionId, eventType, itemId, cartValue) {
   try { await addDoc(collection(db, "upsellEvents"), { sessionId, eventType, itemId: itemId || null, cartValue, timestamp: new Date().toISOString(), date: new Date().toISOString().split('T')[0] }); } catch (e) {}
 }
 
 async function saveOrderToFirebase(order) {
-  try { const docRef = await addDoc(collection(db, "orders"), { ...order, timestamp: new Date().toISOString() }); return docRef.id; } catch (e) { return null; }
+  try {
+    const docRef = await addDoc(collection(db, "orders"), { ...order, timestamp: new Date().toISOString() });
+    return docRef.id;
+  } catch (e) {
+    console.error('[saveOrderToFirebase] FAILED:', e.code, e.message);
+    return null;
+  }
 }
 
 async function deleteOrderFromFirebase(docId) { try { await deleteDoc(doc(db, "orders", docId)); return true; } catch (e) { return false; } }
@@ -254,6 +364,7 @@ export default function CafePOS() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [allCustomers, setAllCustomers] = useState([]);
   const [selectedBills, setSelectedBills] = useState([]);
+  const [expandedBillId, setExpandedBillId] = useState(null);
   const [selectedPromos, setSelectedPromos] = useState([]);
   const [selectedMenuItems, setSelectedMenuItems] = useState([]);
   const [showDeletePassword, setShowDeletePassword] = useState(null);
@@ -264,8 +375,8 @@ export default function CafePOS() {
   const [promoActivationDate, setPromoActivationDate] = useState(new Date().toISOString().split('T')[0]);
   const [promoExpiryDate, setPromoExpiryDate] = useState(new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0]);
   const [promoUsageLimit, setPromoUsageLimit] = useState(1);
-  const [csvStartDate, setCsvStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [csvEndDate, setCsvEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [csvStartDate, setCsvStartDate] = useState(getISTDateStr());
+  const [csvEndDate, setCsvEndDate] = useState(getISTDateStr());
   const [csvPhone, setCsvPhone] = useState('');
   
   // Marketing - password protected
@@ -290,7 +401,7 @@ export default function CafePOS() {
   const [editingInventoryItem, setEditingInventoryItem] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [newExpense, setNewExpense] = useState({ description: '', amount: '', category: 'General', paidBy: 'cash' });
-  const [summaryDate, setSummaryDate] = useState(new Date().toISOString().split('T')[0]);
+  const [summaryDate, setSummaryDate] = useState(getISTDateStr());
   const [syncStatus, setSyncStatus] = useState('connected'); // connected, syncing, offline
   const [selectedTable, setSelectedTable] = useState(null);
   const [newMenuOrders, setNewMenuOrders] = useState([]);
@@ -317,8 +428,21 @@ export default function CafePOS() {
   const upsellDismissCount = useRef(0);
   const upsellSessionId = useRef(`sess_${Date.now()}`);
   const [showCartView, setShowCartView] = useState(false);
+  const [viewBillOrder, setViewBillOrder] = useState(null);
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [editingOrderItems, setEditingOrderItems] = useState([]);
+  const [billsFilter, setBillsFilter] = useState('today');
+  const [billsPayMethod, setBillsPayMethod] = useState({}); // { [orderId]: 'cash'|'upi'|'credit' }
+  const [kotDailyCounter, setKotDailyCounter] = useState(0);
+  const [specialInstructions, setSpecialInstructions] = useState('');
+  const [kitchenAlertActive, setKitchenAlertActive] = useState(false);
+  // ── DataGuard state ──────────────────────────────────────────────────
+  const [systemHealth, setSystemHealth] = useState({ status: 'healthy', menuCount: 0, lastCheck: null, lastBackup: null, incidentCount: 0 });
+  const [recentIncidents, setRecentIncidents] = useState([]);
+  const [showHealthPanel, setShowHealthPanel] = useState(false);
+  const isRecoveringRef = useRef(false);
+  const lastMenuBackupRef = useRef(null);
+  const syncStatusRef = useRef('connected');
 
   // LOGIN CHECK
   useEffect(() => {
@@ -348,45 +472,51 @@ export default function CafePOS() {
 
     setSyncStatus('syncing');
 
-    // ORDERS - Real-time sync with immediate updates
+    // Only mark offline after a grace period — prevents false "Offline" on slow connections
+    let offlineTimer = null;
+    const markOfflineWithDelay = () => {
+      offlineTimer = setTimeout(() => setSyncStatus('offline'), 5000);
+    };
+    const cancelOfflineTimer = () => {
+      if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null; }
+    };
+
+    // ORDERS - Real-time sync
     const unsubOrders = onSnapshot(
-      collection(db, "orders"), 
-      { includeMetadataChanges: true }, // Listen to local changes too
+      collection(db, "orders"),
       (snapshot) => {
+        cancelOfflineTimer();
         const allOrders = [];
         snapshot.forEach(doc => {
           const data = doc.data();
-          allOrders.push({ 
-            id: data.id || doc.id, 
-            firebaseDocId: doc.id, 
-            ...data 
-          });
+          allOrders.push({ id: data.id || doc.id, firebaseDocId: doc.id, ...data });
         });
         allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         setOrders(allOrders);
-        setSyncStatus(snapshot.metadata.fromCache ? 'syncing' : 'connected');
-      }, 
+        setSyncStatus('connected');
+      },
       (error) => {
         console.error('Orders sync error:', error);
-        setSyncStatus('offline');
+        markOfflineWithDelay();
       }
     );
 
     // INVENTORY - Real-time sync with auto-initialization
+    let invWritePending = false;
     const unsubInventory = onSnapshot(doc(db, "appData", "inventory"), (snap) => {
       if (snap.exists()) {
         const cloudInventory = snap.data().items || [];
-        if (cloudInventory.length === 0) {
-          // Cloud has empty array - push defaults
-          console.log('Inventory empty, loading defaults...');
-          saveInventoryToCloud(defaultInventory);
+        if (cloudInventory.length === 0 && !invWritePending) {
+          invWritePending = true;
+          saveInventoryToCloud(defaultInventory).then(() => { invWritePending = false; });
+          setInventory(defaultInventory);
         } else {
           setInventory(cloudInventory);
         }
-      } else {
-        // First time - no document exists
-        console.log('Creating inventory in cloud...');
-        saveInventoryToCloud(defaultInventory);
+      } else if (!invWritePending) {
+        invWritePending = true;
+        saveInventoryToCloud(defaultInventory).then(() => { invWritePending = false; });
+        setInventory(defaultInventory);
       }
     });
 
@@ -395,21 +525,81 @@ export default function CafePOS() {
       if (snap.exists()) setExpenses(snap.data().items || []);
     });
 
-    // MENU - Real-time sync
+    // MENU - Real-time sync with guaranteed merge so default items never vanish
+    // Write-guard: only write back once per session to avoid listener feedback loops
+    let menuWritePending = false;
+    const defaultCategoryNames = [...new Set(defaultMenu.map(i => i.category))];
     const unsubMenu = onSnapshot(doc(db, "appData", "menu"), (snap) => {
       if (snap.exists()) {
-        setMenuItems(snap.data().items || defaultMenu);
+        const cloudItems = snap.data().items || [];
+        if (cloudItems.length === 0) {
+          setMenuItems(defaultMenu);
+          if (!menuWritePending) { menuWritePending = true; saveMenuToCloud(defaultMenu).then(() => { menuWritePending = false; }); }
+        } else {
+          const cloudIds = new Set(cloudItems.map(i => String(i.id)));
+          const missing = defaultMenu.filter(i => !cloudIds.has(String(i.id)));
+          if (missing.length > 0 && !menuWritePending) {
+            const merged = [...cloudItems, ...missing];
+            menuWritePending = true;
+            saveMenuToCloud(merged).then(() => { menuWritePending = false; });
+            setMenuItems(merged);
+          } else {
+            setMenuItems(cloudItems);
+          }
+        }
       } else {
-        saveMenuToCloud(defaultMenu);
+        setMenuItems(defaultMenu);
+        if (!menuWritePending) { menuWritePending = true; saveMenuToCloud(defaultMenu).then(() => { menuWritePending = false; }); }
+      }
+    });
+
+    // CATEGORIES - Real-time sync with guaranteed base categories
+    let catsWritePending = false;
+    const defaultCats = [...new Set(defaultMenu.map(i => i.category))];
+    const unsubCategories = onSnapshot(doc(db, "appData", "categories"), (snap) => {
+      if (snap.exists()) {
+        const cats = snap.data().items || [];
+        const merged = [...new Set([...defaultCats, ...cats])];
+        setCustomCategories(merged);
+        localStorage.setItem('customCategories', JSON.stringify(merged));
+        if (merged.length !== cats.length && !catsWritePending) {
+          catsWritePending = true;
+          saveCategoriesToCloud(merged).then(() => { catsWritePending = false; });
+        }
+      } else {
+        const baseCats = [...defaultCats, 'Sandwiches', 'water bottle'];
+        setCustomCategories(baseCats);
+        if (!catsWritePending) { catsWritePending = true; saveCategoriesToCloud(baseCats).then(() => { catsWritePending = false; }); }
+      }
+    });
+
+    // KOT COUNTER - daily sequential KOT numbers
+    const today = getISTDateStr();
+    let kotWritePending = false;
+    const unsubKOT = onSnapshot(doc(db, "appData", "kotCounter"), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.date !== today && !kotWritePending) {
+          kotWritePending = true;
+          setDoc(doc(db, "appData", "kotCounter"), { count: 0, date: today }).then(() => { kotWritePending = false; });
+          setKotDailyCounter(0);
+        } else {
+          setKotDailyCounter(data.count || 0);
+        }
+      } else if (!kotWritePending) {
+        kotWritePending = true;
+        setDoc(doc(db, "appData", "kotCounter"), { count: 0, date: today }).then(() => { kotWritePending = false; });
       }
     });
 
     // SOPs - Real-time sync
+    let sopWritePending = false;
     const unsubSOPs = onSnapshot(doc(db, "appData", "sops"), (snap) => {
       if (snap.exists()) {
         setMenuSOPs(snap.data().data || defaultSOPs);
-      } else {
-        saveSOPsToCloud(defaultSOPs);
+      } else if (!sopWritePending) {
+        sopWritePending = true;
+        saveSOPsToCloud(defaultSOPs).then(() => { sopWritePending = false; });
       }
     });
 
@@ -454,10 +644,12 @@ export default function CafePOS() {
 
     // Cleanup on unmount
     return () => {
+      cancelOfflineTimer();
       unsubOrders();
       unsubInventory();
       unsubExpenses();
       unsubMenu();
+      unsubKOT();
       unsubSOPs();
       unsubPromos();
       unsubSettings();
@@ -502,7 +694,7 @@ export default function CafePOS() {
         setActiveTableSession(active.length > 0 ? active : null);
       });
     }
-    return () => { unsubMenu(); unsubSettings(); unsubTableStatus(); unsubUpsell(); unsubUpsellSettings(); unsubSession(); };
+    return () => { unsubMenu(); unsubSettings(); unsubTableStatus(); unsubUpsell(); unsubUpsellSettings(); unsubSession(); unsubCategories(); };
   }, [isPublicMenuMode]);
 
   // Load customers when tab opened
@@ -510,13 +702,124 @@ export default function CafePOS() {
     if (activeTab === 'customers' && isLoggedIn) loadAllCustomers();
   }, [activeTab, isLoggedIn]);
 
-  // Auto-populate custom categories from menu if empty
+  // Auto-populate custom categories from menu if empty (also persists to Firestore)
   useEffect(() => {
     if (customCategories.length === 0 && menuItems.length > 0) {
       const cats = [...new Set(menuItems.map(i => (i.category || '').trim()).filter(Boolean))];
-      if (cats.length > 0) { setCustomCategories(cats); localStorage.setItem('customCategories', JSON.stringify(cats)); }
+      if (cats.length > 0) { setCustomCategories(cats); localStorage.setItem('customCategories', JSON.stringify(cats)); saveCategoriesToCloud(cats); }
     }
   }, [menuItems]); // eslint-disable-line
+
+  // Keep syncStatusRef current so health monitor reads it without re-running
+  useEffect(() => { syncStatusRef.current = syncStatus; }, [syncStatus]);
+
+  // ── DATAGUARD: Health monitor — runs every 30s ───────────────────────
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const runHealthCheck = async () => {
+      const now = new Date().toISOString();
+      const issues = [];
+
+      // CHECK 1: Menu integrity — should have at least 80% of defaultMenu items
+      const minExpected = Math.floor(defaultMenu.length * 0.8);
+      if (menuItems.length < minExpected) {
+        issues.push({ type: 'MENU_INTEGRITY', severity: 'critical', message: `Only ${menuItems.length} menu items (expected ${defaultMenu.length}+). Possible data loss.` });
+        if (!isRecoveringRef.current) {
+          isRecoveringRef.current = true;
+          try {
+            const backup = await restoreMenuFromBackup();
+            const existingIds = new Set(backup.items.map(i => String(i.id)));
+            const merged = [...backup.items];
+            defaultMenu.forEach(item => { if (!existingIds.has(String(item.id))) merged.push(item); });
+            setMenuItems(merged);
+            if (syncStatusRef.current === 'connected') {
+              await saveMenuToCloud(merged);
+              await logIncident('MENU_AUTO_RESTORED', `Auto-restored ${merged.length} menu items from backup (${backup.date})`, 'critical', { restored: merged.length, source: backup.date });
+            }
+          } catch (e) { console.error('[DataGuard] Auto-restore failed:', e); }
+          finally { isRecoveringRef.current = false; }
+        }
+      }
+
+      // CHECK 2: Take hourly backup when menu is healthy AND online
+      if (menuItems.length >= minExpected && syncStatusRef.current === 'connected') {
+        const nowMs = Date.now();
+        if (!lastMenuBackupRef.current || nowMs - lastMenuBackupRef.current > 3600000) {
+          lastMenuBackupRef.current = nowMs;
+          await backupMenuSnapshot(menuItems, 'health_monitor_hourly');
+        }
+      }
+
+      // CHECK 3: Stuck orders (> 60 min not delivered)
+      const stuckOrders = orders.filter(o => {
+        if ((o.status || '') === 'delivered' || (o.status || '') === 'ready' || (o.status || '') === 'served') return false;
+        const ageMin = (Date.now() - new Date(o.timestamp || 0).getTime()) / 60000;
+        return ageMin > 60;
+      });
+      if (stuckOrders.length > 0) {
+        issues.push({ type: 'STUCK_ORDERS', severity: 'warning', message: `${stuckOrders.length} order(s) open for 60+ minutes` });
+      }
+
+      // CHECK 4: Sync status (read from ref to avoid re-running on every sync change)
+      if (syncStatusRef.current === 'offline') {
+        issues.push({ type: 'SYNC_OFFLINE', severity: 'critical', message: 'Firebase sync is offline — orders may not be saving' });
+      }
+
+      const status = issues.some(i => i.severity === 'critical') ? 'critical'
+                   : issues.some(i => i.severity === 'warning') ? 'degraded'
+                   : 'healthy';
+      setSystemHealth(prev => ({
+        ...prev, status, menuCount: menuItems.length,
+        lastCheck: now, incidentCount: issues.length,
+      }));
+    };
+    runHealthCheck();
+    const interval = setInterval(runHealthCheck, 30000);
+    return () => clearInterval(interval);
+  }, [isLoggedIn, menuItems.length, orders.length]); // eslint-disable-line
+
+  // ── DATAGUARD: Incidents real-time listener ───────────────────────────
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    try {
+      // No orderBy — avoids requiring a Firestore composite index
+      const unsubIncidents = onSnapshot(
+        collection(db, "incidents"),
+        (snap) => {
+          const inc = [];
+          snap.forEach(d => inc.push({ id: d.id, ...d.data() }));
+          // Sort client-side (newest first) to avoid index requirement
+          inc.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+          setRecentIncidents(inc.slice(0, 30));
+        },
+        () => {} // silently ignore errors
+      );
+      return () => unsubIncidents();
+    } catch (e) {}
+  }, [isLoggedIn]);
+
+  // Cleanup old backups (keep last 7 days) and resolved incidents (keep last 30)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const cleanup = async () => {
+      try {
+        // Delete backup docs older than 7 days
+        const cutoff = new Date(Date.now() - 7 * 86400000);
+        for (let d = 8; d <= 30; d++) {
+          const date = new Date(Date.now() - d * 86400000).toISOString().split('T')[0];
+          deleteDoc(doc(db, "backups", `menu_${date}`)).catch(() => {});
+          for (let h = 0; h < 24; h++) deleteDoc(doc(db, "backups", `menu_${date}_h${h}`)).catch(() => {});
+        }
+        // Delete resolved incidents older than 7 days
+        const incSnap = await getDocs(collection(db, "incidents"));
+        incSnap.forEach(d => {
+          const data = d.data();
+          if (data.resolved && new Date(data.timestamp || 0) < cutoff) deleteDoc(doc(db, "incidents", d.id)).catch(() => {});
+        });
+      } catch (e) {}
+    };
+    cleanup();
+  }, [isLoggedIn]); // eslint-disable-line
 
   // Countdown ticker for upsell popup
   useEffect(() => {
@@ -559,6 +862,39 @@ export default function CafePOS() {
     }
   }, [orders]);
 
+  const playKOTSound = () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const playBeep = (freq, start, dur) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.frequency.value = freq;
+        o.type = 'sine';
+        g.gain.setValueAtTime(0.3, ctx.currentTime + start);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
+        o.start(ctx.currentTime + start);
+        o.stop(ctx.currentTime + start + dur + 0.01);
+      };
+      playBeep(880, 0, 0.12);
+      playBeep(1100, 0.15, 0.12);
+      playBeep(880, 0.30, 0.18);
+    } catch(e) {}
+  };
+
+  // Kitchen alert — play sound when new orders arrive
+  const prevOrderCountRef = useRef(0);
+  useEffect(() => {
+    const activeCount = orders.filter(o => o.status === 'new' || o.status === 'in_progress' || (!o.status && o.paymentStatus === 'pending')).length;
+    if (prevOrderCountRef.current > 0 && activeCount > prevOrderCountRef.current) {
+      if (activeTab !== 'kitchen') {
+        setKitchenAlertActive(true);
+        playKOTSound();
+      }
+    }
+    prevOrderCountRef.current = activeCount;
+  }, [orders]); // eslint-disable-line
+
   const handleLogin = () => {
     if (loginInput === CAFE_PASSWORD) { setIsLoggedIn(true); localStorage.setItem('kaapfi_loggedIn', 'true'); setLoginError(''); setLoginInput(''); }
     else { setLoginError('❌ Wrong password!'); }
@@ -568,56 +904,33 @@ export default function CafePOS() {
   // Clear all local cache and force fresh sync from Firebase
   const clearLocalCache = async () => {
     if (window.confirm('⚠️ This will:\n\n1. Clear all local browser cache\n2. Re-sync fresh data from Firebase\n3. Ensure both devices show SAME data\n\nContinue?')) {
-      // Clear Firebase IndexedDB cache
       try {
-        const dbs = await window.indexedDB.databases();
-        for (const dbInfo of dbs) {
-          if (dbInfo.name && dbInfo.name.includes('firestore')) {
-            window.indexedDB.deleteDatabase(dbInfo.name);
-          }
-        }
-      } catch (e) {}
-      
+        // Terminate Firestore first (required before clearing persistence)
+        await terminate(db);
+        // Clear ALL Firestore cached data and pending writes
+        await clearIndexedDbPersistence(db);
+      } catch (e) {
+        // Fallback: manually delete all Firestore IndexedDB databases
+        try {
+          const dbs = await window.indexedDB.databases();
+          await Promise.all(
+            dbs.filter(d => d.name && d.name.includes('firestore'))
+               .map(d => new Promise((res) => { const r = window.indexedDB.deleteDatabase(d.name); r.onsuccess = res; r.onerror = res; }))
+          );
+        } catch (e2) {}
+      }
       // Clear localStorage except login
       const loginState = localStorage.getItem('kaapfi_loggedIn');
       localStorage.clear();
       if (loginState) localStorage.setItem('kaapfi_loggedIn', loginState);
-      
-      alert('✅ Cache cleared! Reloading...');
       window.location.reload();
     }
   };
 
   // Manual refresh - forces fresh data from Firebase
-  const forceRefresh = async () => {
-    setSyncStatus('syncing');
-    try {
-      // Refetch orders
-      const ordersSnap = await getDocs(collection(db, "orders"));
-      const allOrders = [];
-      ordersSnap.forEach(doc => {
-        const data = doc.data();
-        allOrders.push({ id: data.id || doc.id, firebaseDocId: doc.id, ...data });
-      });
-      allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      setOrders(allOrders);
-
-      // Refetch app data
-      const invSnap = await getDoc(doc(db, "appData", "inventory"));
-      if (invSnap.exists()) setInventory(invSnap.data().items || []);
-      
-      const expSnap = await getDoc(doc(db, "appData", "expenses"));
-      if (expSnap.exists()) setExpenses(expSnap.data().items || []);
-      
-      const menuSnap = await getDoc(doc(db, "appData", "menu"));
-      if (menuSnap.exists()) setMenuItems(menuSnap.data().items || defaultMenu);
-
-      setSyncStatus('connected');
-      alert('✅ Data refreshed from cloud!');
-    } catch (e) {
-      setSyncStatus('offline');
-      alert('❌ Refresh failed. Check internet.');
-    }
+  const forceRefresh = () => {
+    // Simply reload the page — cleanest way to re-establish all Firebase listeners
+    window.location.reload();
   };
 
   const loadAllCustomers = async () => { const customers = await getAllCustomers(); setAllCustomers(customers); };
@@ -704,12 +1017,14 @@ export default function CafePOS() {
       afterDiscount, tax, total, paymentMethod,
       customerName: customerName || 'Walk-in', customerPhone: customerPhone || '',
       timestamp: now.toISOString(),
-      date: now.toISOString().split('T')[0],
+      date: getISTDateStr(),
       time: now.toLocaleTimeString(),
-      displayDate: now.toLocaleDateString(),
-      status: 'in_progress', startTime: Date.now(),
+      displayDate: now.toLocaleDateString('en-IN'),
+      status: 'new',
+      startTime: Date.now(),
       tableNumber: selectedTable || null,
-      paymentStatus: paidStatus, // 'paid' or 'pending'
+      paymentStatus: paidStatus,
+      specialInstructions: specialInstructions || '',
     };
   };
 
@@ -717,58 +1032,118 @@ export default function CafePOS() {
     setCurrentOrder([]); setCustomerName(''); setCustomerPhone(''); setCustomerData(null);
     setCustomerOrders([]); setPaymentMethod('cash'); setManualDiscountValue(0);
     setPromoCode(''); setAppliedPromo(null); setRedeemPoints(0);
-    setSelectedTable(null);
+    setSelectedTable(null); setSpecialInstructions('');
+  };
+
+  // Helper: merge new items into an existing order document (for occupied tables)
+  const mergeItemsIntoExistingOrder = async (existingOrder, newItems, paymentStatus) => {
+    // Merge: combine existing items and new items, incrementing quantity for duplicates
+    const merged = [...existingOrder.items];
+    newItems.forEach(newItem => {
+      const idx = merged.findIndex(m => m.name === newItem.name);
+      if (idx >= 0) { merged[idx] = { ...merged[idx], quantity: (merged[idx].quantity || 1) + (newItem.quantity || 1) }; }
+      else { merged.push({ ...newItem }); }
+    });
+    const newSubtotal = merged.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+    const newTax = Math.round(newSubtotal * (settings.taxRate || 0) / 100);
+    const newTotal = newSubtotal + newTax;
+    await updateDoc(doc(db, "orders", existingOrder.firebaseDocId), {
+      items: merged,
+      subtotal: newSubtotal,
+      tax: newTax,
+      total: newTotal,
+      status: 'in_progress',
+      paymentStatus: paymentStatus === 'paid' ? 'paid' : existingOrder.paymentStatus || 'pending',
+      lastUpdated: new Date().toISOString(),
+    });
+    return true;
   };
 
   const completeOrder = async () => {
-    if (currentOrder.length === 0) { alert('Add items'); return; }
+    if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
     const stockCheck = checkStockAvailability(currentOrder);
     if (!stockCheck.sufficient) {
       const msg = stockCheck.insufficient.map(i => `• ${i.ingredient}: need ${i.needed}${i.unit}, have ${i.available}${i.unit}`).join('\n');
       if (settings.preventNegativeStock) { alert(`❌ INSUFFICIENT STOCK!\n\n${msg}`); return; }
-      else { if (!window.confirm(`⚠️ LOW STOCK:\n\n${msg}\n\nContinue?`)) return; }
     }
     setSyncStatus('syncing');
-    const order = buildOrderObject('paid');
-    const firebaseDocId = await saveOrderToFirebase(order);
-    if (customerPhone.length >= 10) await saveCustomer(customerPhone, order);
-    if (appliedPromo) {
-      const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
-      await savePromosToCloud(updatedPromos);
+    try {
+      // If this is an occupied dine-in table, merge into existing order instead of creating a new one
+      const existingTableOrder = selectedTable && selectedTable !== 'T/A'
+        ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId)
+        : null;
+      if (existingTableOrder) {
+        await mergeItemsIntoExistingOrder(existingTableOrder, currentOrder, 'paid');
+        if (customerPhone.length >= 10) await saveCustomer(customerPhone, existingTableOrder);
+      } else {
+        const kotNum = await getNextKOTNumber();
+        const order = { ...buildOrderObject('paid'), kotNumber: kotNum };
+        const firebaseDocId = await saveOrderToFirebase(order);
+        if (!firebaseDocId) {
+          setSyncStatus('offline');
+          alert('❌ Order could not be saved. Check your internet and try again.');
+          return;
+        }
+        if (customerPhone.length >= 10) await saveCustomer(customerPhone, order);
+        if (appliedPromo) {
+          const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
+          await savePromosToCloud(updatedPromos);
+        }
+      }
+      await deductInventory(currentOrder);
+      if (selectedTable && selectedTable !== 'T/A') {
+        const u = { ...tableStatus, [selectedTable]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u);
+      }
+      clearOrderForm();
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('completeOrder error:', e);
+      alert('❌ Something went wrong saving the order. Please try again.');
+      setSyncStatus('connected');
     }
-    await deductInventory(currentOrder);
-    // Mark table occupied if dine-in
-    if (selectedTable && selectedTable !== 'T/A') {
-      const u = { ...tableStatus, [selectedTable]: 'occupied' }; setTableStatus(u); saveTableStatusToCloud(u);
-    }
-    clearOrderForm();
-    setSyncStatus('connected');
-    alert(firebaseDocId ? '✅ Order saved & synced!' : '⚠️ Check internet connection');
   };
 
   const placeOrderPending = async () => {
-    if (currentOrder.length === 0) { alert('Add items first'); return; }
+    if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
     const stockCheck = checkStockAvailability(currentOrder);
     if (!stockCheck.sufficient) {
       const msg = stockCheck.insufficient.map(i => `• ${i.ingredient}: need ${i.needed}${i.unit}, have ${i.available}${i.unit}`).join('\n');
       if (settings.preventNegativeStock) { alert(`❌ INSUFFICIENT STOCK!\n\n${msg}`); return; }
-      else { if (!window.confirm(`⚠️ LOW STOCK:\n\n${msg}\n\nContinue?`)) return; }
     }
     setSyncStatus('syncing');
-    const order = buildOrderObject('pending');
-    const firebaseDocId = await saveOrderToFirebase(order);
-    if (appliedPromo) {
-      const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
-      await savePromosToCloud(updatedPromos);
+    try {
+      // If this is an occupied dine-in table, merge into existing order instead of creating a new one
+      const existingTableOrder = selectedTable && selectedTable !== 'T/A'
+        ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered' && o.firebaseDocId)
+        : null;
+      if (existingTableOrder) {
+        await mergeItemsIntoExistingOrder(existingTableOrder, currentOrder, 'pending');
+      } else {
+        const kotNum = await getNextKOTNumber();
+        const order = { ...buildOrderObject('pending'), kotNumber: kotNum };
+        const firebaseDocId = await saveOrderToFirebase(order);
+        if (!firebaseDocId) {
+          setSyncStatus('offline');
+          alert('❌ Order could not be saved. Check your internet and try again.');
+          return;
+        }
+        if (appliedPromo) {
+          const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
+          await savePromosToCloud(updatedPromos);
+        }
+      }
+      await deductInventory(currentOrder);
+      // Mark table occupied if dine-in
+      if (selectedTable && selectedTable !== 'T/A') {
+        const u = { ...tableStatus, [selectedTable]: 'occupied' }; setTableStatus(u); saveTableStatusToCloud(u);
+      }
+      clearOrderForm();
+      setSyncStatus('connected');
+    } catch (e) {
+      console.error('placeOrderPending error:', e);
+      alert('❌ Something went wrong saving the order. Please try again.');
+      setSyncStatus('connected');
     }
-    await deductInventory(currentOrder);
-    // Mark table occupied if dine-in
-    if (selectedTable && selectedTable !== 'T/A') {
-      const u = { ...tableStatus, [selectedTable]: 'occupied' }; setTableStatus(u); saveTableStatusToCloud(u);
-    }
-    clearOrderForm();
-    setSyncStatus('connected');
-    alert(firebaseDocId ? '⏳ Order placed! Payment pending — collect later from Bills tab.' : '⚠️ Check internet connection');
   };
 
   const bulkDeleteBills = async () => {
@@ -903,6 +1278,7 @@ export default function CafePOS() {
 </body>
 </html>`;
     const win = window.open('', '', 'height=700,width=400');
+    if (!win) { alert('❌ Popup blocked! Please allow popups for this site to print bills.\n\nIn Chrome: click the popup icon in the address bar → "Always allow popups from build-brown-gamma.vercel.app"'); return; }
     win.document.write(receiptHTML);
     win.document.close();
   };
@@ -1167,11 +1543,12 @@ export default function CafePOS() {
     } catch (e) { return ''; }
   };
   
-  const todayISO = new Date().toISOString().split('T')[0];
+  const todayISO = getISTDateStr();
   const todayOrders = orders.filter(o => {
-    // Try multiple date sources
-    const orderDateISO = getISODate(o.timestamp) || getISODate(o.date);
-    return orderDateISO === todayISO;
+    // Match against IST date of order — handles both old UTC-saved and new IST-saved orders
+    const savedDate = o.date || '';
+    const istDate = toISTDate(o.timestamp);
+    return savedDate === todayISO || istDate === todayISO;
   });
   const todayRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
   const aiRec = customerOrders.length > 0 ? getAIRecommendation(customerOrders, menuItems) : null;
@@ -1209,6 +1586,68 @@ export default function CafePOS() {
       </div>
     );
   }
+
+  const ViewBillModal = () => {
+    if (!viewBillOrder) return null;
+    const o = viewBillOrder;
+    const isPaid = o.paymentStatus === 'paid';
+    const orderTotal = o.total || (o.items || []).reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+    return (
+      <div onClick={() => setViewBillOrder(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: '16px' }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: '#0d1f35', borderRadius: '16px', width: '100%', maxWidth: '440px', maxHeight: '90vh', overflowY: 'auto', border: '2px solid rgba(252,128,25,0.5)', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+          {/* Modal header */}
+          <div style={{ padding: '18px 20px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '18px', fontWeight: '900', color: '#FC8019' }}>🧾 Bill #{o.id.toString().slice(-5)}</div>
+              <div style={{ fontSize: '12px', color: '#c8e0f4', marginTop: '3px' }}>
+                {o.tableNumber && o.tableNumber !== 'T/A' ? `🪑 Table ${o.tableNumber}` : o.tableNumber === 'T/A' ? '📦 Takeaway' : ''}{o.customerName ? `  ·  ${o.customerName}` : ''}
+              </div>
+              <div style={{ fontSize: '11px', color: 'rgba(200,224,244,0.5)', marginTop: '2px' }}>{o.date} · {o.time}</div>
+            </div>
+            <button onClick={() => setViewBillOrder(null)} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', color: '#fff', borderRadius: '8px', width: '36px', height: '36px', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>✕</button>
+          </div>
+          {/* Items list */}
+          <div style={{ padding: '16px 20px' }}>
+            {(o.items || []).map((item, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ fontSize: '28px', width: '36px', textAlign: 'center' }}>{item.emoji || '🍽️'}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#fff' }}>{item.name}</div>
+                  <div style={{ fontSize: '12px', color: 'rgba(200,224,244,0.6)', marginTop: '2px' }}>₹{item.price} × {item.quantity}</div>
+                </div>
+                <div style={{ fontSize: '16px', fontWeight: '900', color: '#FC8019' }}>₹{(item.price || 0) * (item.quantity || 1)}</div>
+              </div>
+            ))}
+          </div>
+          {/* Footer total */}
+          <div style={{ padding: '14px 20px 20px', borderTop: '2px solid rgba(252,128,25,0.3)', background: 'rgba(0,0,0,0.2)' }}>
+            {(o.manualDiscount || 0) > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#69F0AE', marginBottom: '6px' }}>
+                <span>Discount</span><span>−₹{o.manualDiscount}</span>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div>
+                <div style={{ fontSize: '11px', color: 'rgba(200,224,244,0.5)', letterSpacing: '1px', marginBottom: '2px' }}>GRAND TOTAL</div>
+                <div style={{ fontSize: '28px', fontWeight: '900', color: '#FC8019' }}>₹{orderTotal.toFixed(0)}</div>
+                <div style={{ fontSize: '11px', color: '#c8e0f4', textTransform: 'uppercase' }}>{o.paymentMethod || 'Cash'}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                {isPaid
+                  ? <div style={{ background: '#1B5E20', color: '#A5D6A7', padding: '10px 20px', borderRadius: '10px', fontWeight: '900', fontSize: '15px' }}>✅ PAID</div>
+                  : <button onClick={() => { markPaymentPaid(o.id); setViewBillOrder(null); }}
+                      style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '10px', padding: '12px 22px', fontWeight: '900', cursor: 'pointer', fontSize: '15px' }}>
+                      ✔ Received<br/>Payment
+                    </button>
+                }
+              </div>
+            </div>
+            <button onClick={() => setViewBillOrder(null)} style={{ width: '100%', padding: '11px', background: 'rgba(255,255,255,0.07)', color: '#c8e0f4', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>Close</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const ModifyCartModal = () => editingOrderId && (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
@@ -1315,6 +1754,7 @@ export default function CafePOS() {
         }
       `}</style>
       <DeleteModal />
+      <ViewBillModal />
       <ModifyCartModal />
 
       {/* New order notifications from public menu */}
@@ -1363,13 +1803,37 @@ export default function CafePOS() {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <div style={{ background: 'rgba(255,255,255,0.25)', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '13px', fontWeight: '700' }}>🔥 {todayOrders.length} Orders • ₹{todayRevenue}</div>
-            <div style={{ background: syncStatus === 'connected' ? '#2E7D32' : syncStatus === 'syncing' ? '#F57C00' : '#C62828', padding: '8px 14px', borderRadius: '20px', color: '#fff', fontSize: '11px', fontWeight: '700' }}>
-              {syncStatus === 'connected' ? '🔄 LIVE' : syncStatus === 'syncing' ? '⏳ SYNC' : '⚠️ OFF'}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ background: 'rgba(255,255,255,0.25)', padding: '6px 12px', borderRadius: '16px', color: '#fff', fontSize: '12px', fontWeight: '800' }}>
+                🧾 {todayOrders.length} orders · ₹{todayRevenue.toFixed(0)}
+              </div>
+              {Object.values(tableStatus).filter(v => v === 'occupied').length > 0 && (
+                <div style={{ background: 'rgba(230,74,25,0.5)', padding: '6px 12px', borderRadius: '16px', color: '#fff', fontSize: '12px', fontWeight: '800' }}>
+                  🪑 {Object.values(tableStatus).filter(v => v === 'occupied').length}/{Object.keys(tableStatus).length} tables
+                </div>
+              )}
+              {orders.filter(o => (o.status || '') !== 'delivered' && (o.status || '') !== 'ready').length > 0 && (
+                <button onClick={() => { setActiveTab('kitchen'); setKitchenAlertActive(false); }} style={{ background: kitchenAlertActive ? '#fff' : 'rgba(255,255,255,0.2)', color: kitchenAlertActive ? '#E64A19' : '#fff', border: kitchenAlertActive ? '2px solid #E64A19' : 'none', padding: '6px 12px', borderRadius: '16px', fontSize: '12px', fontWeight: '800', cursor: 'pointer' }}>
+                  👨‍🍳 {orders.filter(o => (o.status || '') !== 'delivered').length} in kitchen{kitchenAlertActive ? ' 🔔' : ''}
+                </button>
+              )}
             </div>
-            <button onClick={forceRefresh} style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid #fff', padding: '8px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🔄 Refresh</button>
-            <button onClick={clearLocalCache} style={{ background: '#E64A19', color: '#fff', border: '1px solid #fff', padding: '8px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>🧹 Clear Cache</button>
-            <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid #fff', padding: '8px 16px', borderRadius: '20px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>Logout</button>
+            {/* Sync status dot */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.15)', padding: '6px 12px', borderRadius: '16px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: syncStatus === 'connected' ? '#69F0AE' : syncStatus === 'syncing' ? '#FFD54F' : '#EF5350', boxShadow: syncStatus === 'connected' ? '0 0 6px #69F0AE' : syncStatus === 'offline' ? '0 0 6px #EF5350' : 'none' }} />
+              <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff' }}>{syncStatus === 'connected' ? 'Live' : syncStatus === 'syncing' ? 'Syncing…' : 'Offline'}</span>
+            </div>
+            {/* DataGuard health badge */}
+            <button onClick={() => { setActiveTab('monitor'); }} title="System Health — click to open Monitor" style={{ background: systemHealth.status === 'healthy' ? 'rgba(105,240,174,0.2)' : systemHealth.status === 'critical' ? 'rgba(239,83,80,0.3)' : 'rgba(255,213,79,0.2)', border: 'none', padding: '6px 10px', borderRadius: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: systemHealth.status === 'healthy' ? '#69F0AE' : systemHealth.status === 'critical' ? '#EF5350' : '#FFD54F', boxShadow: systemHealth.status !== 'healthy' ? '0 0 8px currentColor' : 'none' }} />
+              <span style={{ fontSize: '10px', fontWeight: '800', color: '#fff' }}>
+                {systemHealth.status === 'healthy' ? '🛡 Guard' : systemHealth.status === 'critical' ? '🚨 Alert' : '⚠ Watch'}
+              </span>
+            </button>
+            {syncStatus === 'offline' && (
+              <button onClick={forceRefresh} style={{ background: '#EF5350', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '16px', cursor: 'pointer', fontSize: '11px', fontWeight: '800' }}>↺ Retry</button>
+            )}
+            <button onClick={handleLogout} style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', padding: '6px 14px', borderRadius: '16px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>Logout</button>
           </div>
         </div>
       </header>}
@@ -1390,9 +1854,12 @@ export default function CafePOS() {
           { id: 'customers', icon: '👥', label: 'Customers' },
           { id: 'menumanager', icon: '📸', label: 'Menu Manager' },
           { id: 'publicmenu', icon: '🌐', label: 'Public Menu' },
+          { id: 'monitor', icon: '🔍', label: 'Monitor' },
           { id: 'settings', icon: '⚙️', label: 'Settings' },
         ].map(tab => {
-          const pendingCount = tab.id === 'kitchen' ? todayOrders.filter(o => o.source === 'public_menu' && o.status === 'pending_acceptance').length : 0;
+          const pendingCount = tab.id === 'kitchen'
+            ? orders.filter(o => (o.status || 'new') !== 'delivered' && (o.status || 'new') !== 'served').length
+            : 0;
           return (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '14px 14px', border: 'none', background: activeTab === tab.id ? 'rgba(252,128,25,0.12)' : 'transparent', color: activeTab === tab.id ? '#FC8019' : 'rgba(255,255,255,0.65)', cursor: 'pointer', fontSize: '12px', fontWeight: activeTab === tab.id ? '800' : '600', borderBottom: activeTab === tab.id ? '3px solid #FC8019' : '3px solid transparent', borderRadius: '4px 4px 0 0', whiteSpace: 'nowrap', position: 'relative', transition: 'all 0.15s' }}>
               {tab.icon} {tab.label}
@@ -1420,8 +1887,7 @@ export default function CafePOS() {
                     {[1, 2, 3, 4].filter(t => tableStatus[t] === 'occupied').map(t => (
                       <button key={t} onClick={() => {
                         setSelectedTable(t);
-                        const ex = orders.find(o => String(o.tableNumber) === String(t) && (o.status || '') !== 'delivered');
-                        if (ex?.items?.length) setCurrentOrder([...ex.items]);
+                        setCurrentOrder([]);
                       }} style={{ padding: '8px 18px', background: '#fff', color: '#E64A19', border: 'none', borderRadius: '8px', fontWeight: '900', fontSize: '15px', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
                         🔴 Table {t}
                       </button>
@@ -1437,25 +1903,28 @@ export default function CafePOS() {
                   const isSelected = selectedTable === t;
                   return (
                     <div key={t} onClick={() => {
-                      if (isSelected) { setSelectedTable(null); }
-                      else {
-                        setSelectedTable(t);
-                        if (occupied) {
-                          const existingOrder = orders.find(o => String(o.tableNumber) === String(t) && (o.status || '') !== 'delivered');
-                          if (existingOrder && existingOrder.items && existingOrder.items.length > 0) {
-                            setCurrentOrder([...existingOrder.items]);
-                          }
-                        }
-                      }
+                      if (isSelected) { setSelectedTable(null); setCurrentOrder([]); }
+                      else { setSelectedTable(t); setCurrentOrder([]); }
                     }}
-                      style={{ flex: '1', minWidth: '80px', background: isSelected ? '#FC8019' : occupied ? 'rgba(230,74,25,0.15)' : 'rgba(76,175,80,0.1)', border: `2px solid ${isSelected ? '#E64A19' : occupied ? '#E64A19' : '#4CAF50'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
-                      <div style={{ fontSize: '18px' }}>{isSelected ? '✅' : occupied ? '🔴' : '🟢'}</div>
-                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>Table {t}</div>
-                      <div style={{ fontSize: '11px', fontWeight: '700', color: isSelected ? '#fff' : occupied ? '#FC8019' : '#69F0AE' }}>{isSelected ? 'Selected' : occupied ? '+ Add Items' : 'Free'}</div>
+                      style={{ flex: '1', minWidth: '90px', background: isSelected ? '#FC8019' : occupied ? '#1a0a00' : '#0d1f0d', border: `2px solid ${isSelected ? '#fff' : occupied ? '#FC8019' : '#4CAF50'}`, borderRadius: '12px', padding: '12px 8px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', position: 'relative' }}>
+                      <div style={{ fontSize: '22px', marginBottom: '4px' }}>{isSelected ? '✅' : occupied ? '🔴' : '🟢'}</div>
+                      <div style={{ fontSize: '14px', fontWeight: '900', color: '#fff' }}>Table {t}</div>
+                      {occupied && !isSelected ? (() => {
+                        const activeOrder = orders.find(o => String(o.tableNumber) === String(t) && (o.status||'new') !== 'delivered');
+                        const billTotal = activeOrder ? (activeOrder.items||[]).reduce((s,i)=>s+(i.price||0)*(i.quantity||1),0) : 0;
+                        return (
+                          <>
+                            <div style={{ fontSize: '13px', fontWeight: '900', color: '#FC8019', marginTop: '2px' }}>₹{billTotal}</div>
+                            <div style={{ fontSize: '10px', fontWeight: '700', color: 'rgba(255,255,255,0.5)', marginTop: '1px' }}>tap to add</div>
+                          </>
+                        );
+                      })() : (
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: isSelected ? 'rgba(255,255,255,0.9)' : '#69F0AE', marginTop: '2px' }}>{isSelected ? 'Ordering' : 'Free'}</div>
+                      )}
                       {occupied && !isSelected && (
                         <button onClick={(e) => { e.stopPropagation(); const u = { ...tableStatus, [t]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u); }}
-                          style={{ marginTop: '4px', fontSize: '9px', fontWeight: '800', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '4px', padding: '2px 6px', cursor: 'pointer' }}>
-                          Mark Free
+                          style={{ marginTop: '6px', fontSize: '9px', fontWeight: '800', background: 'rgba(230,74,25,0.3)', color: '#FC8019', border: '1px solid #FC8019', borderRadius: '4px', padding: '2px 8px', cursor: 'pointer' }}>
+                          Free Up
                         </button>
                       )}
                     </div>
@@ -1468,6 +1937,33 @@ export default function CafePOS() {
                   <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'T/A' ? '#fff' : '#90CAF9' }}>{selectedTable === 'T/A' ? 'Selected' : 'Takeaway'}</div>
                 </div>
               </div>
+
+              {/* ── CURRENT BILL PANEL — shown when an occupied table is selected ── */}
+              {selectedTable && selectedTable !== 'T/A' && tableStatus[selectedTable] === 'occupied' && (() => {
+                const runningOrder = orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered');
+                if (!runningOrder) return null;
+                const runningTotal = runningOrder.items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+                return (
+                  <div style={{ background: '#0d1f35', border: '2px solid #FC8019', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '900', color: '#FC8019' }}>📋 Current Bill — Table {selectedTable}</div>
+                      <div style={{ fontSize: '13px', fontWeight: '900', color: '#fff', background: runningOrder.paymentStatus === 'paid' ? '#1B5E20' : '#B71C1C', padding: '3px 12px', borderRadius: '20px' }}>
+                        {runningOrder.paymentStatus === 'paid' ? '✅ PAID' : '🔴 PENDING'} · ₹{runningTotal}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      {runningOrder.items.map((item, idx) => (
+                        <span key={idx} style={{ background: 'rgba(252,128,25,0.12)', border: '1px solid rgba(252,128,25,0.3)', borderRadius: '8px', padding: '4px 10px', fontSize: '12px', fontWeight: '700', color: '#c8e0f4' }}>
+                          {item.emoji} {item.name} ×{item.quantity}
+                        </span>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.45)', fontWeight: '600' }}>
+                      ➕ Select new items below — they will be added to this bill
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 {categories.map(cat => (
@@ -1582,6 +2078,10 @@ export default function CafePOS() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#c8e0f4' }}><span>Subtotal</span><span>₹{subtotal}</span></div>
                     {totalDiscount > 0 && <div style={{ display: 'flex', justifyContent: 'space-between', color: '#E64A19' }}><span>Discount</span><span>-₹{totalDiscount.toFixed(0)}</span></div>}
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '18px', fontWeight: '700', marginTop: '6px', color: '#fff' }}><span>TOTAL</span><span>₹{total.toFixed(0)}</span></div>
+                  </div>
+                  <div style={{ marginBottom: '10px', padding: '10px', background: '#0F2236', borderRadius: '8px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#FFD54F', display: 'block', marginBottom: '4px' }}>📝 Special Instructions</label>
+                    <input type="text" value={specialInstructions} onChange={e => setSpecialInstructions(e.target.value)} placeholder="e.g. Less sugar, extra ice, no onion..." style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.15)', fontSize: '12px', background: '#1a3a5c', color: '#fff', boxSizing: 'border-box' }} />
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '10px' }}>
                     {['cash', 'card', 'upi', 'split'].map(m => (
@@ -1896,139 +2396,276 @@ export default function CafePOS() {
 
         {activeTab === 'kitchen' && (
           <div>
-            <h2 style={{ fontSize: '26px', margin: '0 0 20px', color: '#fff', fontWeight: '900', letterSpacing: '-0.5px' }}>👨‍🍳 Kitchen Display</h2>
-            <div style={{ display: 'grid', gap: '16px' }}>
-              {todayOrders.filter(o => (o.status || 'in_progress') !== 'delivered').map(order => {
-                const startTime = order.startTime || new Date(order.timestamp).getTime();
-                const elapsed = Math.floor((Date.now() - startTime) / 60000);
-                const isLate = elapsed > 10;
-                const statusColor = order.status === 'ready' ? '#1B5E20' : order.status === 'in_progress' ? '#E65100' : '#1a2e4a';
-                return (
-                  <div key={order.id} style={{ background: '#122B45', padding: '20px', borderRadius: '16px', border: isLate ? '3px solid #E64A19' : order.source === 'public_menu' ? '3px solid #FF9800' : '2px solid rgba(255,255,255,0.1)', boxShadow: '0 4px 16px rgba(0,0,0,0.4)' }}>
-                    {/* Order Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-                      <div>
-                        <div style={{ fontWeight: '900', color: '#fff', fontSize: '18px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', marginBottom: '6px' }}>
-                          <span style={{ color: '#FC8019' }}>#{order.id.toString().slice(-5)}</span>
-                          <span>•</span>
-                          <span>{order.customerName}</span>
-                          {order.source === 'public_menu' && <span style={{ fontSize: '11px', background: 'rgba(33,150,243,0.25)', color: '#90CAF9', padding: '3px 9px', borderRadius: '10px', fontWeight: '800', border: '1px solid rgba(33,150,243,0.4)' }}>🌐 QR Order</span>}
-                          {order.tableNumber && <span style={{ fontSize: '12px', background: 'rgba(156,39,176,0.3)', color: '#CE93D8', padding: '3px 10px', borderRadius: '10px', fontWeight: '900', border: '1px solid rgba(156,39,176,0.4)' }}>{order.tableNumber === 'T/A' ? '📦 T/A' : `🪑 Table ${order.tableNumber}`}</span>}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          {order.paymentStatus === 'paid'
-                            ? <span style={{ fontSize: '12px', background: '#1B5E20', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>✅ PAID</span>
-                            : order.paymentStatus === 'partial'
-                            ? <><span style={{ fontSize: '12px', background: '#F57F17', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>⚡ PARTIAL</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '11px', background: 'rgba(252,128,25,0.2)', color: '#FC8019', border: '1px solid #FC8019', padding: '3px 10px', borderRadius: '8px', fontWeight: '800', cursor: 'pointer' }}>Mark Paid</button></>
-                            : <><span style={{ fontSize: '12px', background: '#B71C1C', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontWeight: '900' }}>🔴 PAYMENT PENDING</span><button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '11px', background: 'rgba(252,128,25,0.2)', color: '#FC8019', border: '1px solid #FC8019', padding: '3px 10px', borderRadius: '8px', fontWeight: '800', cursor: 'pointer' }}>Mark Paid</button></>
-                          }
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                        <div style={{ background: isLate ? '#B71C1C' : elapsed > 5 ? '#E65100' : '#1B5E20', color: '#fff', padding: '6px 14px', borderRadius: '20px', fontSize: '14px', fontWeight: '900' }}>⏱ {elapsed} min</div>
-                        {isLate && <div style={{ fontSize: '11px', color: '#FF5252', fontWeight: '800' }}>⚠️ OVERDUE</div>}
-                      </div>
-                    </div>
-                    {/* Items */}
-                    {order.items.map(item => {
-                      const sop = menuSOPs[item.name] || [];
-                      return (
-                        <div key={item.id} style={{ background: '#0F2236', padding: '14px', borderRadius: '10px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                          <div style={{ fontSize: '18px', fontWeight: '900', color: '#fff', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span>{item.emoji} {item.name}</span>
-                            <span style={{ background: '#FC8019', color: '#fff', borderRadius: '8px', padding: '3px 12px', fontSize: '16px', fontWeight: '900' }}>×{item.quantity}</span>
+            {/* Kitchen Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+              <div>
+                <h2 style={{ fontSize: '22px', margin: '0 0 4px', color: '#fff', fontWeight: '900' }}>👨‍🍳 Kitchen Display</h2>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>Live KOT feed — all active orders</div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <div style={{ background: '#122B45', padding: '8px 14px', borderRadius: '10px', fontSize: '12px', fontWeight: '800', color: '#FC8019' }}>
+                  🔥 {orders.filter(o => (o.status||'new') !== 'delivered').length} Active
+                </div>
+                <div style={{ background: '#122B45', padding: '8px 14px', borderRadius: '10px', fontSize: '12px', fontWeight: '800', color: '#69F0AE' }}>
+                  ✅ {todayOrders.filter(o => o.status === 'delivered').length} Done Today
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gap: '14px' }}>
+              {orders
+                .filter(o => (o.status || 'new') !== 'delivered')
+                .sort((a, b) => (a.startTime || 0) - (b.startTime || 0))
+                .map((order, kitchenIdx) => {
+                  const startTime = order.startTime || new Date(order.timestamp).getTime();
+                  const elapsed = Math.floor((Date.now() - startTime) / 60000);
+                  const isLate = elapsed > 12;
+                  const isWarning = elapsed > 7;
+                  const isPaid = order.paymentStatus === 'paid';
+                  const orderTotal = order.total || (order.items||[]).reduce((s,i)=>s+(i.price||0)*(i.quantity||1),0);
+                  const statusColors = {
+                    'new': { bg: '#1a3a5c', border: '#2196F3', label: '🆕 New', btnBg: '#1565C0' },
+                    'in_progress': { bg: '#2d1b00', border: '#FF9800', label: '🔥 Preparing', btnBg: '#E65100' },
+                    'ready': { bg: '#1b3a1b', border: '#4CAF50', label: '✅ Ready', btnBg: '#2E7D32' },
+                    'served': { bg: '#1b2e3a', border: '#00BCD4', label: '🍽️ Served', btnBg: '#00838F' },
+                  };
+                  const sc = statusColors[order.status || 'new'] || statusColors['new'];
+                  return (
+                    <div key={order.id} style={{ background: sc.bg, borderRadius: '14px', border: `2px solid ${isLate ? '#E64A19' : sc.border}`, overflow: 'hidden', boxShadow: isLate ? '0 0 20px rgba(230,74,25,0.3)' : '0 2px 8px rgba(0,0,0,0.3)' }}>
+                      {/* KOT Header */}
+                      <div style={{ background: isLate ? '#7f1d1d' : '#0d1f35', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: `1px solid ${sc.border}44` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <div style={{ background: '#FC8019', color: '#fff', borderRadius: '8px', padding: '4px 12px', fontWeight: '900', fontSize: '16px' }}>
+                            KOT #{order.kotNumber || (kitchenIdx + 1)}
                           </div>
-                          {sop.length > 0 ? (
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '6px', paddingLeft: '4px' }}>
-                              {sop.map((row, i) => {
-                                const unit = inventory.find(inv => inv.name === row.ingredient)?.unit || '';
-                                return <div key={i} style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '700', background: 'rgba(255,255,255,0.05)', borderRadius: '6px', padding: '5px 10px' }}>→ {row.ingredient}: <span style={{ color: '#FFD54F', fontWeight: '900' }}>{row.quantity * item.quantity}{unit}</span></div>;
-                              })}
+                          {order.tableNumber && (
+                            <div style={{ background: order.tableNumber === 'T/A' ? 'rgba(33,150,243,0.3)' : 'rgba(156,39,176,0.3)', color: order.tableNumber === 'T/A' ? '#90CAF9' : '#CE93D8', borderRadius: '8px', padding: '4px 12px', fontWeight: '900', fontSize: '14px', border: `1px solid ${order.tableNumber === 'T/A' ? 'rgba(33,150,243,0.5)' : 'rgba(156,39,176,0.5)'}` }}>
+                              {order.tableNumber === 'T/A' ? '📦 Takeaway' : `🪑 Table ${order.tableNumber}`}
                             </div>
-                          ) : <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', paddingLeft: '4px', fontWeight: '600' }}>No recipe set</div>}
+                          )}
+                          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '600' }}>{order.customerName}</span>
                         </div>
-                      );
-                    })}
-                    {/* Action Buttons */}
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
-                      {order.status === 'pending_acceptance' && (
-                        <button onClick={() => { setEditingOrderId(order.id); setEditingOrderItems([...(order.items || [])]); }} style={{ padding: '10px 16px', background: 'rgba(252,128,25,0.2)', color: '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>✏️ Modify</button>
-                      )}
-                      <button onClick={() => updateOrderStatus(order.id, 'in_progress')} style={{ padding: '10px 16px', background: order.status === 'in_progress' ? '#E65100' : 'rgba(255,255,255,0.08)', color: '#fff', border: order.status === 'in_progress' ? 'none' : '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>🔥 In Progress</button>
-                      <button onClick={() => updateOrderStatus(order.id, 'ready')} style={{ padding: '10px 16px', background: order.status === 'ready' ? '#2E7D32' : 'rgba(255,255,255,0.08)', color: '#fff', border: order.status === 'ready' ? 'none' : '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>✅ Ready</button>
-                      <button onClick={() => updateOrderStatus(order.id, 'delivered')} style={{ padding: '10px 16px', background: '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>📦 Delivered</button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ background: isLate ? '#E64A19' : isWarning ? '#E65100' : '#1B5E20', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '13px', fontWeight: '900' }}>
+                            ⏱ {elapsed}m{isLate ? ' ⚠️ LATE' : ''}
+                          </span>
+                          <span style={{ background: sc.bg, border: `1.5px solid ${sc.border}`, color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>
+                            {sc.label}
+                          </span>
+                          {isPaid
+                            ? <span style={{ background: '#1B5E20', color: '#A5D6A7', padding: '4px 10px', borderRadius: '16px', fontSize: '11px', fontWeight: '900' }}>✅ PAID</span>
+                            : <span style={{ background: '#B71C1C', color: '#fff', padding: '4px 10px', borderRadius: '16px', fontSize: '12px', fontWeight: '900' }}>₹{orderTotal}</span>}
+                        </div>
+                      </div>
+                      {/* Items */}
+                      <div style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: order.specialInstructions ? '8px' : '12px' }}>
+                          {(order.items||[]).map((item, idx) => (
+                            <div key={idx} style={{ background: '#0F2236', borderRadius: '10px', padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '8px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                              <span style={{ fontSize: '22px' }}>{item.emoji}</span>
+                              <div>
+                                <div style={{ fontSize: '14px', fontWeight: '900', color: '#fff' }}>{item.name}</div>
+                                {(menuSOPs[item.name]||[]).length > 0 && (
+                                  <div style={{ fontSize: '10px', color: '#FFD54F', marginTop: '1px' }}>
+                                    {menuSOPs[item.name].map(r=>`${r.ingredient} ${r.quantity * (item.quantity||1)}`).join(' · ')}
+                                  </div>
+                                )}
+                              </div>
+                              <div style={{ background: '#FC8019', color: '#fff', borderRadius: '8px', padding: '3px 10px', fontSize: '18px', fontWeight: '900', marginLeft: '4px', minWidth: '32px', textAlign: 'center' }}>
+                                ×{item.quantity||1}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {order.specialInstructions && (
+                          <div style={{ background: 'rgba(255,213,79,0.1)', border: '1px solid rgba(255,213,79,0.3)', borderRadius: '8px', padding: '7px 12px', marginBottom: '12px', fontSize: '12px', color: '#FFD54F', fontWeight: '700' }}>
+                            📝 {order.specialInstructions}
+                          </div>
+                        )}
+                        {/* Action Row */}
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                          <button onClick={() => updateOrderStatus(order.id, 'in_progress')}
+                            style={{ padding: '9px 14px', background: order.status === 'in_progress' ? '#E65100' : 'rgba(255,255,255,0.07)', color: '#fff', border: order.status === 'in_progress' ? 'none' : '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
+                            🔥 Preparing
+                          </button>
+                          <button onClick={() => updateOrderStatus(order.id, 'ready')}
+                            style={{ padding: '9px 14px', background: order.status === 'ready' ? '#2E7D32' : 'rgba(255,255,255,0.07)', color: '#fff', border: order.status === 'ready' ? 'none' : '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
+                            ✅ Ready
+                          </button>
+                          <button onClick={() => updateOrderStatus(order.id, 'served')}
+                            style={{ padding: '9px 14px', background: order.status === 'served' ? '#00838F' : 'rgba(255,255,255,0.07)', color: '#fff', border: order.status === 'served' ? 'none' : '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
+                            🍽️ Served
+                          </button>
+                          <button onClick={() => updateOrderStatus(order.id, 'delivered')}
+                            style={{ padding: '9px 14px', background: '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
+                            📦 Done
+                          </button>
+                          <button onClick={() => setViewBillOrder(order)}
+                            style={{ padding: '9px 14px', background: 'rgba(252,128,25,0.15)', color: '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
+                            👁 Bill
+                          </button>
+                          {!isPaid && (
+                            <button onClick={async () => {
+                              if (order.firebaseDocId) {
+                                await updateDoc(doc(db, 'orders', order.firebaseDocId), { paymentStatus: 'paid', status: 'delivered', paymentTime: new Date().toISOString() });
+                                if (order.tableNumber && order.tableNumber !== 'T/A') {
+                                  const updated = { ...tableStatus, [order.tableNumber]: 'available' };
+                                  setTableStatus(updated);
+                                  saveTableStatusToCloud(updated);
+                                }
+                              }
+                            }} style={{ padding: '9px 14px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '900' }}>
+                              💰 Collect & Close
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-              {todayOrders.filter(o => (o.status || 'in_progress') !== 'delivered').length === 0 && (
+                  );
+                })}
+              {orders.filter(o => (o.status || 'new') !== 'delivered').length === 0 && (
                 <div style={{ background: '#122B45', padding: '60px', borderRadius: '16px', textAlign: 'center', border: '2px solid rgba(76,175,80,0.4)' }}>
                   <div style={{ fontSize: '64px', marginBottom: '12px' }}>🎉</div>
-                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#fff' }}>All Orders Done!</div>
-                  <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginTop: '6px' }}>Kitchen is clear</div>
+                  <div style={{ fontSize: '20px', fontWeight: '900', color: '#fff' }}>Kitchen Clear!</div>
+                  <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginTop: '6px' }}>No active orders</div>
+                  <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', marginTop: '4px' }}>Today: {todayOrders.filter(o => o.status === 'delivered').length} orders completed</div>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {activeTab === 'bills' && (
-          <div>
-            <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>🧾 Today's Orders</h2>
-            {todayOrders.length > 0 && (
-              <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input type="checkbox" checked={selectedBills.length === todayOrders.length} onChange={selectAllBills} style={{ width: '18px', height: '18px' }} />
-                  <span style={{ fontSize: '13px', fontWeight: '700' }}>Select All ({selectedBills.length}/{todayOrders.length})</span>
-                </label>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                  <button onClick={downloadTodayAll} style={{ padding: '8px 12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>📥 All</button>
-                  {selectedBills.length > 0 && (<>
-                    <button onClick={downloadSelectedBills} style={{ padding: '8px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>📥 Selected</button>
-                    <button onClick={() => setShowDeletePassword('bills')} style={{ padding: '8px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>🗑️ Delete</button>
-                  </>)}
+        {activeTab === 'bills' && (() => {
+          const today = getISTDateStr();
+          const filteredOrders = (() => {
+            if (billsFilter === 'today') return orders.filter(o => (o.date === today) || toISTDate(o.timestamp) === today);
+            if (billsFilter === 'unpaid') return orders.filter(o => o.paymentStatus !== 'paid');
+            return orders;
+          })().sort((a, b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
+          const selectAll = () => setSelectedBills(selectedBills.length === filteredOrders.length ? [] : filteredOrders.map(o => o.id));
+          return (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                <h2 style={{ fontSize: '22px', margin: 0, color: '#fff', fontWeight: '800' }}>🧾 Bills</h2>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {[{v:'today',l:'Today'},{v:'unpaid',l:'Unpaid'},{v:'all',l:'All'}].map(f => (
+                    <button key={f.v} onClick={() => setBillsFilter(f.v)} style={{ padding: '7px 14px', background: billsFilter === f.v ? '#FC8019' : 'rgba(255,255,255,0.08)', color: billsFilter === f.v ? '#fff' : 'rgba(255,255,255,0.7)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '800' }}>{f.l}</button>
+                  ))}
                 </div>
               </div>
-            )}
-            {todayOrders.length === 0 ? <div style={{ background: '#122B45', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#c8e0f4' }}>📭 No orders yet</div> : (
-              <div style={{ display: 'grid', gap: '12px' }}>
-                {todayOrders.slice().reverse().map(order => {
-                  const isPaid = order.paymentStatus === 'paid';
-                  const isPublic = order.source === 'public_menu';
-                  return (
-                  <div key={order.id} style={{ background: '#122B45', padding: '16px', borderRadius: '12px', display: 'flex', gap: '12px', border: selectedBills.includes(order.id) ? '2px solid #FC8019' : isPublic && !isPaid ? '2px solid #FF9800' : '1px solid rgba(255,255,255,0.08)' }}>
-                    <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleBill(order.id)} style={{ width: '20px', height: '20px', marginTop: '4px' }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                        <div>
-                          <div style={{ fontWeight: '700', color: '#fff', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                            #{order.id.toString().slice(-5)}
-                            {isPublic && <span style={{ fontSize: '10px', background: 'rgba(21,101,192,0.4)', color: '#90CAF9', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>🌐 Online</span>}
-                            {order.tableNumber && <span style={{ fontSize: '10px', background: 'rgba(106,27,154,0.4)', color: '#CE93D8', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>{order.tableNumber === 'T/A' ? '📦 Takeaway' : `🪑 Table ${order.tableNumber}`}</span>}
-                          </div>
-                          <div style={{ fontSize: '12px', color: '#c8e0f4', marginTop: '4px' }}>{order.customerName} {order.customerPhone && `• ${order.customerPhone}`} • {order.time}</div>
-                        </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '18px', fontWeight: '700', color: '#FC8019' }}>₹{order.total?.toFixed(0)}</div>
-                          <div style={{ fontSize: '11px', color: '#c8e0f4', textTransform: 'uppercase' }}>{order.paymentMethod}</div>
-                          <div style={{ marginTop: '4px' }}>
-                            {isPaid
-                              ? <span style={{ fontSize: '11px', background: '#e8f5e9', color: '#2E7D32', padding: '3px 10px', borderRadius: '10px', fontWeight: '700' }}>✅ Paid</span>
-                              : <button onClick={() => markPaymentPaid(order.id)} style={{ fontSize: '11px', background: '#FFF3E0', color: '#E64A19', border: '1px solid #FC8019', padding: '3px 10px', borderRadius: '10px', fontWeight: '700', cursor: 'pointer' }}>💰 Mark Paid</button>
-                            }
+              {filteredOrders.length > 0 && (
+                <div style={{ background: '#122B45', padding: '12px 16px', borderRadius: '10px', marginBottom: '12px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={selectedBills.length === filteredOrders.length && filteredOrders.length > 0} onChange={selectAll} style={{ width: '16px', height: '16px' }} />
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#fff' }}>Select All ({selectedBills.length}/{filteredOrders.length})</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <button onClick={downloadTodayAll} style={{ padding: '7px 12px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>📥 Export All</button>
+                    {selectedBills.length > 0 && <><button onClick={downloadSelectedBills} style={{ padding: '7px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>📥 Selected</button><button onClick={() => setShowDeletePassword('bills')} style={{ padding: '7px 12px', background: '#E64A19', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '700' }}>🗑️ Delete</button></>}
+                  </div>
+                </div>
+              )}
+              {filteredOrders.length === 0 ? (
+                <div style={{ background: '#122B45', padding: '60px', borderRadius: '12px', textAlign: 'center', color: '#c8e0f4' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '12px' }}>📭</div>
+                  <div style={{ fontSize: '16px', fontWeight: '700' }}>{billsFilter === 'today' ? 'No orders today yet' : billsFilter === 'unpaid' ? 'No unpaid orders' : 'No orders found'}</div>
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gap: '10px' }}>
+                  {filteredOrders.map(order => {
+                    const isPaid = order.paymentStatus === 'paid';
+                    const isPublic = order.source === 'public_menu';
+                    const orderTotal = order.total || (order.items || []).reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
+                    const statusColor = order.status === 'delivered' ? '#69F0AE' : order.status === 'ready' ? '#64B5F6' : order.status === 'in_progress' ? '#FFB74D' : '#c8e0f4';
+                    const statusBg = order.status === 'delivered' ? 'rgba(76,175,80,0.15)' : order.status === 'ready' ? 'rgba(33,150,243,0.15)' : order.status === 'in_progress' ? 'rgba(255,152,0,0.15)' : 'rgba(255,255,255,0.06)';
+                    const statusLabel = order.status === 'delivered' ? '📦 Delivered' : order.status === 'ready' ? '✅ Ready' : order.status === 'in_progress' ? '🔥 In Kitchen' : '⏳ Pending';
+                    return (
+                      <div key={order.id} style={{ background: '#122B45', borderRadius: '12px', border: selectedBills.includes(order.id) ? '2px solid #FC8019' : isPaid ? '1px solid rgba(76,175,80,0.25)' : '2px solid rgba(252,128,25,0.35)', overflow: 'hidden' }}>
+                        <div style={{ padding: '12px 16px' }}>
+                          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                            <input type="checkbox" checked={selectedBills.includes(order.id)} onChange={() => toggleBill(order.id)} style={{ width: '16px', height: '16px', marginTop: '4px', flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '6px' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontWeight: '900', color: '#FC8019', fontSize: '14px' }}>#{order.id.toString().slice(-5)}</span>
+                                  {order.tableNumber && <span style={{ fontSize: '11px', background: 'rgba(156,39,176,0.3)', color: '#CE93D8', padding: '2px 8px', borderRadius: '10px', fontWeight: '800' }}>{order.tableNumber === 'T/A' ? '📦 Takeaway' : `🪑 T${order.tableNumber}`}</span>}
+                                  {isPublic && <span style={{ fontSize: '10px', background: 'rgba(33,150,243,0.25)', color: '#90CAF9', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>🌐 Online</span>}
+                                  <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', fontWeight: '800', background: statusBg, color: statusColor }}>{statusLabel}</span>
+                                </div>
+                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                  <div style={{ fontSize: '20px', fontWeight: '900', color: isPaid ? '#69F0AE' : '#FC8019' }}>₹{orderTotal.toFixed(0)}</div>
+                                  <div style={{ fontSize: '10px', color: '#c8e0f4' }}>{order.paymentMethod || 'cash'} · {order.time || ''}</div>
+                                </div>
+                              </div>
+                              <div style={{ fontSize: '12px', color: '#c8e0f4', margin: '4px 0 8px' }}>{order.customerName}{order.customerPhone ? ` · ${order.customerPhone}` : ''}</div>
+                              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>
+                                {(order.items||[]).slice(0,3).map(i => `${i.name}×${i.quantity||1}`).join(' · ')}{(order.items||[]).length > 3 ? ` +${(order.items||[]).length-3} more` : ''}
+                              </div>
+                              {/* Payment method selector — only for unpaid orders */}
+                              {!isPaid && (() => {
+                                const selMethod = billsPayMethod[order.id] || order.paymentMethod || 'cash';
+                                const methods = [{ id: 'cash', label: '💵 Cash' }, { id: 'upi', label: '📱 UPI' }, { id: 'credit', label: '💳 Credit' }];
+                                return (
+                                  <div style={{ display: 'flex', gap: '5px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                    <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', fontWeight: '700', alignSelf: 'center', marginRight: '2px' }}>Payment:</span>
+                                    {methods.map(m => (
+                                      <button key={m.id} onClick={() => setBillsPayMethod(p => ({ ...p, [order.id]: m.id }))}
+                                        style={{ padding: '5px 12px', fontSize: '12px', fontWeight: '800', border: 'none', borderRadius: '20px', cursor: 'pointer',
+                                          background: selMethod === m.id ? '#FC8019' : 'rgba(255,255,255,0.08)',
+                                          color: selMethod === m.id ? '#fff' : 'rgba(255,255,255,0.6)' }}>
+                                        {m.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                                <button onClick={() => setViewBillOrder(order)} style={{ padding: '7px 12px', background: 'rgba(252,128,25,0.15)', color: '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '900' }}>👁 View Bill</button>
+                                {!isPaid && (() => {
+                                  const chosenMethod = billsPayMethod[order.id] || order.paymentMethod || 'cash';
+                                  return (
+                                    <button onClick={async () => {
+                                      if (order.firebaseDocId) {
+                                        try {
+                                          await updateDoc(doc(db, 'orders', order.firebaseDocId), { paymentStatus: 'paid', paymentMethod: chosenMethod, status: 'delivered', paymentTime: new Date().toISOString() });
+                                          if (order.tableNumber && order.tableNumber !== 'T/A') {
+                                            const updated = { ...tableStatus, [order.tableNumber]: 'available' };
+                                            setTableStatus(updated);
+                                            saveTableStatusToCloud(updated);
+                                          }
+                                          setBillsPayMethod(p => { const n = { ...p }; delete n[order.id]; return n; });
+                                        } catch(e) { alert('❌ Failed to update. Check internet.'); }
+                                      } else { alert('❌ Could not find order record. Please refresh and try again.'); }
+                                    }} style={{ padding: '7px 14px', background: 'linear-gradient(135deg, #4CAF50, #2E7D32)', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '900' }}>✅ Complete & Close</button>
+                                  );
+                                })()}
+                                {!isPaid && (() => {
+                                  const chosenMethod = billsPayMethod[order.id] || order.paymentMethod || 'cash';
+                                  return (
+                                    <button onClick={async () => {
+                                      if (order.firebaseDocId) {
+                                        try {
+                                          await updateDoc(doc(db, 'orders', order.firebaseDocId), { paymentStatus: 'paid', paymentMethod: chosenMethod, paymentTime: new Date().toISOString() });
+                                          setBillsPayMethod(p => { const n = { ...p }; delete n[order.id]; return n; });
+                                        } catch(e) { alert('❌ Failed to update. Check internet.'); }
+                                      }
+                                    }} style={{ padding: '7px 11px', background: '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '800' }}>💰 Pay Only</button>
+                                  );
+                                })()}
+                                {isPaid && <span style={{ fontSize: '12px', background: 'rgba(27,94,32,0.5)', color: '#A5D6A7', padding: '6px 12px', borderRadius: '8px', fontWeight: '800', border: '1px solid rgba(76,175,80,0.3)' }}>✅ {order.paymentMethod ? order.paymentMethod.toUpperCase() : 'PAID'}</span>}
+                                <button onClick={() => downloadSingleBill(order)} style={{ padding: '7px 10px', background: '#0F2236', color: '#4CAF50', border: '1px solid rgba(76,175,80,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' }}>📥</button>
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div style={{ fontSize: '12px', color: '#c8e0f4', margin: '8px 0' }}>{(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}</div>
-                      <button onClick={() => downloadSingleBill(order)} style={{ padding: '6px 12px', background: '#0F2236', color: '#4CAF50', border: '1px solid #4CAF50', borderRadius: '4px', cursor: 'pointer', fontSize: '11px' }}>📥 CSV</button>
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {activeTab === 'reports' && (
           <div>
@@ -2064,14 +2701,14 @@ export default function CafePOS() {
                 {customCategories.map(cat => (
                   <span key={cat} style={{ background: 'rgba(252,128,25,0.15)', border: '1.5px solid #FC8019', borderRadius: '20px', padding: '5px 12px', fontSize: '12px', fontWeight: '800', color: '#FC8019', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                     {cat}
-                    <button onClick={() => { const u = customCategories.filter(c => c !== cat); setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); }} style={{ background: 'none', border: 'none', color: '#FC8019', cursor: 'pointer', fontWeight: '900', fontSize: '15px', padding: '0', lineHeight: '1' }}>×</button>
+                    <button onClick={() => { const u = customCategories.filter(c => c !== cat); setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); saveCategoriesToCloud(u); }} style={{ background: 'none', border: 'none', color: '#FC8019', cursor: 'pointer', fontWeight: '900', fontSize: '15px', padding: '0', lineHeight: '1' }}>×</button>
                   </span>
                 ))}
                 {customCategories.length === 0 && <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', fontWeight: '600' }}>No categories yet — add below</span>}
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
-                <input placeholder="New category (e.g. Tea, Snacks, Desserts)..." value={newCategoryInput} onChange={e => setNewCategoryInput(e.target.value)} onKeyPress={e => { if (e.key !== 'Enter') return; const v = newCategoryInput.trim(); if (!v || customCategories.includes(v)) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); setNewCategoryInput(''); }} style={{ flex: 1, padding: '9px 12px', border: '1.5px solid #FC8019', borderRadius: '8px', fontSize: '13px', fontWeight: '700', color: '#000' }} />
-                <button onClick={() => { const v = newCategoryInput.trim(); if (!v || customCategories.includes(v)) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); setNewCategoryInput(''); }} style={{ padding: '9px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '900', cursor: 'pointer', fontSize: '14px' }}>+ Add</button>
+                <input placeholder="New category (e.g. Tea, Snacks, Desserts)..." value={newCategoryInput} onChange={e => setNewCategoryInput(e.target.value)} onKeyPress={e => { if (e.key !== 'Enter') return; const v = newCategoryInput.trim(); if (!v || customCategories.some(c => c.toLowerCase() === v.toLowerCase())) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); saveCategoriesToCloud(u); setNewCategoryInput(''); }} style={{ flex: 1, padding: '9px 12px', border: '1.5px solid #FC8019', borderRadius: '8px', fontSize: '13px', fontWeight: '700', color: '#000' }} />
+                <button onClick={() => { const v = newCategoryInput.trim(); if (!v || customCategories.some(c => c.toLowerCase() === v.toLowerCase())) return; const u = [...customCategories, v]; setCustomCategories(u); localStorage.setItem('customCategories', JSON.stringify(u)); saveCategoriesToCloud(u); setNewCategoryInput(''); }} style={{ padding: '9px 16px', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '900', cursor: 'pointer', fontSize: '14px' }}>+ Add</button>
               </div>
             </div>
 
@@ -3460,6 +4097,271 @@ export default function CafePOS() {
         )}
 
 
+
+        {activeTab === 'monitor' && (() => {
+          const today = new Date().toISOString().split('T')[0];
+          const todayBills = orders.filter(o => (o.date || '').startsWith(today));
+          const activeTables = Object.entries(tableStatus).filter(([,v]) => v === 'occupied').map(([k]) => k);
+          const pendingKitchen = orders.filter(o => o.status === 'pending' || o.status === 'in_progress');
+          const unpaidBills = orders.filter(o => o.paymentStatus !== 'paid' && (o.status || '') !== 'delivered');
+          const todayRevenue = todayBills.filter(o => o.paymentStatus === 'paid').reduce((s, o) => s + (o.total || 0), 0);
+
+          // Detect duplicate active orders for same table
+          const tableOrderMap = {};
+          orders.filter(o => o.tableNumber && o.tableNumber !== 'T/A' && (o.status || '') !== 'delivered').forEach(o => {
+            const t = String(o.tableNumber);
+            if (!tableOrderMap[t]) tableOrderMap[t] = [];
+            tableOrderMap[t].push(o);
+          });
+          const duplicateTables = Object.entries(tableOrderMap).filter(([, arr]) => arr.length > 1);
+
+          // Orders missing key fields
+          const brokenOrders = orders.filter(o => !o.items || o.items.length === 0 || !o.total);
+
+          const issues = [];
+          if (syncStatus === 'offline') issues.push({ level: 'error', msg: '🔴 Firebase OFFLINE — orders may not be saving! Check internet connection.' });
+          if (duplicateTables.length > 0) issues.push({ level: 'error', msg: `🔴 ${duplicateTables.map(([t]) => 'Table ' + t).join(', ')} have MULTIPLE active orders — possible duplicate billing risk.` });
+          if (brokenOrders.length > 0) issues.push({ level: 'warn', msg: `🟡 ${brokenOrders.length} order(s) with missing items or ₹0 total — may be ghost orders. Check Bills tab.` });
+          if (unpaidBills.length > 5) issues.push({ level: 'warn', msg: `🟡 ${unpaidBills.length} unpaid bills open — verify these are all genuine active tables.` });
+          if (menuItems.length < 5) issues.push({ level: 'error', msg: '🔴 Fewer than 5 menu items loaded — menu data may have failed to load. Refresh the page.' });
+          const oldOrders = orders.filter(o => (o.status||'new') !== 'delivered' && o.startTime && (Date.now() - o.startTime) > 30 * 60 * 1000);
+          if (oldOrders.length > 0) issues.push({ level: 'warn', msg: `🟡 ${oldOrders.length} order(s) open for 30+ minutes — ${oldOrders.map(o => o.tableNumber ? 'Table ' + o.tableNumber : 'T/A').join(', ')}. Check if forgotten.` });
+          const newUnactionedOrders = orders.filter(o => o.status === 'new' && o.startTime && (Date.now() - o.startTime) > 5 * 60 * 1000);
+          if (newUnactionedOrders.length > 0) issues.push({ level: 'error', msg: `🔴 ${newUnactionedOrders.length} KOT(s) not picked up in 5+ minutes — kitchen may not have received them!` });
+
+          const StatCard = ({ icon, label, value, color }) => (
+            <div style={{ background: '#122B45', borderRadius: '12px', padding: '18px', flex: '1', minWidth: '140px', border: `1px solid ${color}33` }}>
+              <div style={{ fontSize: '28px', marginBottom: '4px' }}>{icon}</div>
+              <div style={{ fontSize: '26px', fontWeight: '900', color }}>{value}</div>
+              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', fontWeight: '700', marginTop: '2px' }}>{label}</div>
+            </div>
+          );
+
+          return (
+            <div>
+              <h2 style={{ fontSize: '22px', margin: '0 0 6px', color: '#fff', fontWeight: '800' }}>🔍 System Monitor</h2>
+              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', marginBottom: '20px' }}>Live health check — auto-refreshes with real data</div>
+
+              {/* Connection Status */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', background: syncStatus === 'connected' ? 'rgba(76,175,80,0.1)' : 'rgba(230,74,25,0.15)', borderRadius: '10px', padding: '12px 18px', border: `1px solid ${syncStatus === 'connected' ? 'rgba(76,175,80,0.4)' : 'rgba(230,74,25,0.5)'}` }}>
+                <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: syncStatus === 'connected' ? '#69F0AE' : '#E64A19', boxShadow: syncStatus === 'connected' ? '0 0 8px #69F0AE' : '0 0 8px #E64A19', animation: 'pulse 2s infinite' }} />
+                <span style={{ color: syncStatus === 'connected' ? '#69F0AE' : '#FC8019', fontWeight: '800', fontSize: '14px' }}>
+                  {syncStatus === 'connected' ? '● Firebase Connected — Live sync active' : '⚠ Firebase OFFLINE — Check internet connection'}
+                </span>
+              </div>
+
+              {/* Issue Alerts */}
+              {issues.length > 0 ? (
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: '800', color: '#FC8019', marginBottom: '10px' }}>⚠ Issues Detected ({issues.length})</div>
+                  {issues.map((issue, i) => (
+                    <div key={i} style={{ background: issue.level === 'error' ? 'rgba(230,74,25,0.15)' : 'rgba(252,128,25,0.1)', borderLeft: `4px solid ${issue.level === 'error' ? '#E64A19' : '#FC8019'}`, padding: '10px 14px', borderRadius: '0 8px 8px 0', marginBottom: '8px', fontSize: '13px', color: '#fff', fontWeight: '600' }}>
+                      {issue.level === 'error' ? '🔴' : '🟡'} {issue.msg}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ background: 'rgba(76,175,80,0.1)', border: '1px solid rgba(76,175,80,0.3)', borderRadius: '10px', padding: '12px 18px', marginBottom: '20px', fontSize: '14px', color: '#69F0AE', fontWeight: '700' }}>
+                  ✅ All systems healthy — No issues detected
+                </div>
+              )}
+
+              {/* Stats Grid */}
+              <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '24px' }}>
+                <StatCard icon="🧾" label="Orders Today" value={todayBills.length} color="#FC8019" />
+                <StatCard icon="💰" label="Revenue Today" value={`₹${todayRevenue.toLocaleString('en-IN')}`} color="#69F0AE" />
+                <StatCard icon="🍽️" label="Active Tables" value={activeTables.length > 0 ? activeTables.map(t => 'T' + t).join(', ') : 'None'} color="#64B5F6" />
+                <StatCard icon="👨‍🍳" label="Pending Kitchen" value={pendingKitchen.length} color={pendingKitchen.length > 3 ? '#FC8019' : '#fff'} />
+                <StatCard icon="💳" label="Unpaid Bills" value={unpaidBills.length} color={unpaidBills.length > 3 ? '#E64A19' : '#fff'} />
+                <StatCard icon="🍽️" label="Menu Items" value={menuItems.length} color="#CE93D8" />
+                <StatCard icon="📂" label="Categories" value={customCategories.length} color="#80DEEA" />
+              </div>
+
+              {/* Duplicate Orders Panel */}
+              {duplicateTables.length > 0 && (
+                <div style={{ background: 'rgba(230,74,25,0.1)', border: '1px solid rgba(230,74,25,0.4)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#FC8019', marginBottom: '10px' }}>🔴 Duplicate Orders — Same Table, Multiple Cards</div>
+                  {duplicateTables.map(([table, tableOrders]) => (
+                    <div key={table} style={{ background: '#0A1929', borderRadius: '8px', padding: '12px', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff', marginBottom: '6px' }}>Table {table} — {tableOrders.length} separate orders</div>
+                      {tableOrders.map((o, i) => (
+                        <div key={i} style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', marginBottom: '4px' }}>
+                          #{i + 1} — {(o.items || []).length} items — ₹{o.total || 0} — {o.status || 'pending'} — {o.firebaseDocId?.slice(0, 8)}…
+                        </div>
+                      ))}
+                      <div style={{ fontSize: '11px', color: '#FC8019', marginTop: '6px' }}>⚠ Go to Kitchen tab → place all new orders from Order tab using the same table to auto-merge</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Active Orders Overview */}
+              <div style={{ background: '#122B45', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff', marginBottom: '12px' }}>📋 All Active Orders ({orders.filter(o => (o.status||'') !== 'delivered').length})</div>
+                {orders.filter(o => (o.status||'') !== 'delivered').length === 0 ? (
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>No active orders</div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                      <thead>
+                        <tr style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'left' }}>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Table</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Items</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Total</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Status</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Payment</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>Doc ID</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orders.filter(o => (o.status||'') !== 'delivered').map((o, i) => {
+                          const isDupe = duplicateTables.some(([t]) => String(t) === String(o.tableNumber));
+                          return (
+                            <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: isDupe ? 'rgba(230,74,25,0.08)' : 'transparent' }}>
+                              <td style={{ padding: '7px 8px', color: '#fff', fontWeight: '700' }}>{o.tableNumber || 'T/A'}{isDupe ? ' 🔴' : ''}</td>
+                              <td style={{ padding: '7px 8px', color: 'rgba(255,255,255,0.7)' }}>{(o.items||[]).length} items</td>
+                              <td style={{ padding: '7px 8px', color: '#69F0AE', fontWeight: '700' }}>₹{o.total || 0}</td>
+                              <td style={{ padding: '7px 8px' }}>
+                                <span style={{ background: o.status === 'delivered' ? 'rgba(76,175,80,0.2)' : o.status === 'in_progress' ? 'rgba(252,128,25,0.2)' : 'rgba(100,181,246,0.2)', color: o.status === 'delivered' ? '#69F0AE' : o.status === 'in_progress' ? '#FC8019' : '#64B5F6', padding: '2px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+                                  {o.status || 'pending'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '7px 8px' }}>
+                                <span style={{ color: o.paymentStatus === 'paid' ? '#69F0AE' : '#FC8019', fontWeight: '700', fontSize: '11px' }}>{o.paymentStatus === 'paid' ? '✅ Paid' : '⏳ Pending'}</span>
+                              </td>
+                              <td style={{ padding: '7px 8px', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', fontSize: '11px' }}>{(o.firebaseDocId || '').slice(0, 10)}…</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Data Health */}
+              <div style={{ background: '#122B45', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff', marginBottom: '12px' }}>🗄 Data Health</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '13px' }}>
+                  {[
+                    { label: 'Total orders in memory', value: orders.length, ok: orders.length >= 0 },
+                    { label: 'Today\'s orders', value: todayBills.length, ok: true },
+                    { label: 'Menu items loaded', value: menuItems.length, ok: menuItems.length > 10 },
+                    { label: 'Custom categories', value: customCategories.join(', ') || 'None', ok: customCategories.length > 0 },
+                    { label: 'Promo codes active', value: promoCodes.filter(p => p.active).length, ok: true },
+                    { label: 'Cafe name', value: settings.cafeName || '—', ok: !!settings.cafeName },
+                    { label: 'Tax rate', value: `${settings.taxRate || 0}%`, ok: true },
+                    { label: 'Firebase sync', value: syncStatus, ok: syncStatus === 'connected' },
+                  ].map((row, i) => (
+                    <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px' }}>{row.label}</span>
+                      <span style={{ color: row.ok ? '#69F0AE' : '#FC8019', fontWeight: '700', fontSize: '12px', textAlign: 'right', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{String(row.value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── DATAGUARD PANEL ─────────────────────────────────────── */}
+              <div style={{ background: 'linear-gradient(135deg, #0D2137 0%, #122B45 100%)', border: '1px solid rgba(105,240,174,0.25)', borderRadius: '14px', padding: '20px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                  <div style={{ fontSize: '22px' }}>🛡</div>
+                  <div>
+                    <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff' }}>DataGuard — Self-Healing System</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+                      Last check: {systemHealth.lastCheck ? new Date(systemHealth.lastCheck).toLocaleTimeString('en-IN') : 'Pending…'}
+                      {' · '}Menu items: {systemHealth.menuCount}
+                      {' · '}Checks every 30s
+                    </div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', padding: '6px 14px', borderRadius: '20px', fontWeight: '800', fontSize: '12px', background: systemHealth.status === 'healthy' ? 'rgba(105,240,174,0.15)' : systemHealth.status === 'critical' ? 'rgba(239,83,80,0.2)' : 'rgba(255,213,79,0.15)', color: systemHealth.status === 'healthy' ? '#69F0AE' : systemHealth.status === 'critical' ? '#EF5350' : '#FFD54F', border: `1px solid ${systemHealth.status === 'healthy' ? 'rgba(105,240,174,0.4)' : systemHealth.status === 'critical' ? 'rgba(239,83,80,0.4)' : 'rgba(255,213,79,0.4)'}` }}>
+                    {systemHealth.status === 'healthy' ? '✅ All Healthy' : systemHealth.status === 'critical' ? '🚨 Critical' : '⚠ Degraded'}
+                  </div>
+                </div>
+
+                {/* Guard capabilities */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', marginBottom: '16px' }}>
+                  {[
+                    { icon: '📸', label: 'Auto Backup', desc: 'Hourly Firestore snapshots', active: true },
+                    { icon: '🔍', label: 'Menu Integrity', desc: `Watching ${defaultMenu.length} core items`, active: menuItems.length >= defaultMenu.length * 0.8 },
+                    { icon: '⚡', label: 'Auto-Restore', desc: 'Restores from last 7 days backup', active: true },
+                    { icon: '📝', label: 'Incident Log', desc: `${recentIncidents.length} events logged`, active: true },
+                    { icon: '🔄', label: 'Merge Protection', desc: 'Never overwrites defaults', active: true },
+                    { icon: '📶', label: 'Offline Queue', desc: 'IndexedDB persistence active', active: true },
+                  ].map((cap, i) => (
+                    <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '12px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <div style={{ fontSize: '20px' }}>{cap.icon}</div>
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '800', color: cap.active ? '#fff' : 'rgba(255,255,255,0.4)' }}>{cap.label}</div>
+                        <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>{cap.desc}</div>
+                        <div style={{ marginTop: '4px', fontSize: '10px', fontWeight: '700', color: cap.active ? '#69F0AE' : '#FC8019' }}>{cap.active ? '● Active' : '● Inactive'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Manual backup button */}
+                <button onClick={async () => {
+                  const ok = await backupMenuSnapshot(menuItems, 'manual_backup');
+                  lastMenuBackupRef.current = Date.now();
+                  if (ok) {
+                    await logIncident('MANUAL_BACKUP', `Manual backup taken — ${menuItems.length} items saved`, 'info', { count: menuItems.length });
+                    setSystemHealth(prev => ({ ...prev, lastBackup: new Date().toISOString() }));
+                    alert(`✅ Backup saved! ${menuItems.length} menu items protected.`);
+                  } else {
+                    alert('❌ Backup failed — check internet connection');
+                  }
+                }} style={{ padding: '10px 20px', background: 'rgba(105,240,174,0.15)', color: '#69F0AE', border: '1px solid rgba(105,240,174,0.4)', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '13px', marginRight: '10px' }}>
+                  📸 Take Manual Backup Now
+                </button>
+                <button onClick={async () => {
+                  if (!window.confirm('Force restore menu from last backup? Current menu will be replaced.')) return;
+                  const backup = await restoreMenuFromBackup();
+                  const merged = [...backup.items];
+                  const existingIds = new Set(merged.map(i => String(i.id)));
+                  defaultMenu.forEach(item => { if (!existingIds.has(String(item.id))) merged.push(item); });
+                  await saveMenuToCloud(merged);
+                  setMenuItems(merged);
+                  await logIncident('MANUAL_RESTORE', `Manual restore — ${merged.length} items restored from ${backup.date}`, 'info', { restored: merged.length, source: backup.date });
+                  alert(`✅ Restored ${merged.length} menu items from backup (${backup.date})`);
+                }} style={{ padding: '10px 20px', background: 'rgba(252,128,25,0.15)', color: '#FC8019', border: '1px solid rgba(252,128,25,0.4)', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '13px' }}>
+                  🔄 Force Restore from Backup
+                </button>
+              </div>
+
+              {/* ── INCIDENT LOG ─────────────────────────────────────────── */}
+              <div style={{ background: '#122B45', borderRadius: '12px', padding: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff' }}>📋 Incident Log ({recentIncidents.length})</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>Auto-logged by DataGuard</div>
+                </div>
+                {recentIncidents.length === 0 ? (
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', padding: '12px 0' }}>No incidents logged yet. System is clean.</div>
+                ) : (
+                  <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                    {recentIncidents.map((inc, i) => (
+                      <div key={inc.id || i} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div style={{ fontSize: '16px', marginTop: '2px' }}>
+                          {inc.severity === 'critical' ? '🔴' : inc.severity === 'info' ? '🟢' : '🟡'}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '12px', fontWeight: '800', color: inc.severity === 'critical' ? '#EF5350' : inc.severity === 'info' ? '#69F0AE' : '#FFD54F' }}>{inc.type}</div>
+                          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.8)', margin: '2px 0' }}>{inc.message}</div>
+                          <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)' }}>{inc.timestamp ? new Date(inc.timestamp).toLocaleString('en-IN') : ''}</div>
+                        </div>
+                        {!inc.resolved && (
+                          <button onClick={() => resolveIncident(inc.id)} style={{ padding: '4px 10px', background: 'rgba(105,240,174,0.1)', color: '#69F0AE', border: '1px solid rgba(105,240,174,0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '10px', fontWeight: '700', whiteSpace: 'nowrap' }}>✓ Resolve</button>
+                        )}
+                        {inc.resolved && (
+                          <span style={{ fontSize: '10px', color: 'rgba(105,240,174,0.6)', fontWeight: '700' }}>✓ Resolved</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {activeTab === 'settings' && (
           <div style={{ maxWidth: '700px' }}>
