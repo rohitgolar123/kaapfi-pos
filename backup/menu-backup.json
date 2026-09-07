@@ -1,0 +1,330 @@
+{
+  "backedUpAt": "2026-07-05T10:48:22.838Z",
+  "previousMenu": {
+    "updatedAt": "2026-07-04T12:51:39.562Z",
+    "items": [
+      {
+        "price": 20,
+        "category": "Kaapfi Hot",
+        "name": "Milk Filter Coffee",
+        "id": 1,
+        "emoji": "☕"
+      },
+      {
+        "price": 20,
+        "category": "Kaapfi Hot",
+        "name": "Black Filter Coffee",
+        "id": 2,
+        "emoji": "☕"
+      },
+      {
+        "price": 110,
+        "category": "Iced Filter",
+        "name": "Classic Iced Filter",
+        "id": 3,
+        "emoji": "🧊"
+      },
+      {
+        "id": 4,
+        "emoji": "🧊",
+        "category": "Iced Filter",
+        "name": "Hazelnut Iced Filter",
+        "price": 120
+      },
+      {
+        "price": 125,
+        "id": 5,
+        "emoji": "🧊",
+        "category": "Iced Filter",
+        "name": "Vanilla Iced Filter"
+      },
+      {
+        "price": 120,
+        "emoji": "🧊",
+        "id": 6,
+        "name": "Salted Caramel Iced",
+        "category": "Iced Filter"
+      },
+      {
+        "price": 125,
+        "name": "Rose Iced Filter",
+        "category": "Iced Filter",
+        "emoji": "🌹",
+        "id": 7
+      },
+      {
+        "emoji": "🍓",
+        "id": 8,
+        "name": "Strawberry Iced",
+        "category": "Iced Filter",
+        "price": 125
+      },
+      {
+        "price": 100,
+        "category": "Cold Brew",
+        "name": "Classic Cold Brew",
+        "id": 9,
+        "emoji": "❄️"
+      },
+      {
+        "category": "Cold Brew",
+        "name": "Cranberry Cold Brew",
+        "id": 10,
+        "emoji": "🔴",
+        "price": 120
+      },
+      {
+        "price": 120,
+        "name": "Orange Cold Brew",
+        "category": "Cold Brew",
+        "emoji": "🍊",
+        "id": 11
+      },
+      {
+        "category": "Cold Brew",
+        "name": "Ginger Ale Cold Brew",
+        "id": 12,
+        "emoji": "🫚",
+        "price": 120
+      },
+      {
+        "price": 120,
+        "name": "Tonic Cold Brew",
+        "category": "Cold Brew",
+        "emoji": "💧",
+        "id": 13
+      },
+      {
+        "emoji": "🌊",
+        "id": 14,
+        "name": "Ocean Brew",
+        "category": "Cold Brew",
+        "price": 125
+      },
+      {
+        "category": "Cold Brew",
+        "name": "Kaccha Aam Brew",
+        "id": 15,
+        "emoji": "🥭",
+        "price": 125
+      },
+      {
+        "price": 125,
+        "emoji": "🍒",
+        "id": 16,
+        "name": "Kokum Brew",
+        "category": "Cold Brew"
+      },
+      {
+        "name": "Roohafza Brew",
+        "category": "Cold Brew",
+        "emoji": "🌸",
+        "id": 17,
+        "price": 125
+      },
+      {
+        "name": "Thatte Idli",
+        "category": "Idli",
+        "emoji": "🍚",
+        "id": 18,
+        "price": 45
+      },
+      {
+        "name": "Ghee Thatte Idli",
+        "category": "Idli",
+        "emoji": "🍚",
+        "id": 19,
+        "price": 60
+      },
+      {
+        "name": "Ghee Podi Thatte Idli",
+        "category": "Idli",
+        "emoji": "🍚",
+        "id": 20,
+        "price": 70
+      },
+      {
+        "emoji": "🥘",
+        "id": 21,
+        "name": "Idli with Veg Curry",
+        "category": "Idli",
+        "price": 60
+      },
+      {
+        "price": 100,
+        "emoji": "🍗",
+        "id": 22,
+        "name": "Idli with Chicken Curry",
+        "category": "Idli"
+      },
+      {
+        "price": 99,
+        "name": "Paneer Chatpata",
+        "category": "Malabar Paratha",
+        "emoji": "🫓",
+        "id": 23
+      },
+      {
+        "price": 99,
+        "name": "Paneer Savji",
+        "category": "Malabar Paratha",
+        "emoji": "🫓",
+        "id": 24
+      },
+      {
+        "price": 99,
+        "name": "Paneer Makkhanwala",
+        "category": "Malabar Paratha",
+        "emoji": "🫓",
+        "id": 25
+      },
+      {
+        "emoji": "🫓",
+        "id": 26,
+        "name": "Paneer Achari",
+        "category": "Malabar Paratha",
+        "price": 99
+      },
+      {
+        "price": 125,
+        "id": 27,
+        "emoji": "🍗",
+        "category": "Malabar Paratha",
+        "name": "Burnt Garlic Creamy Chicken"
+      },
+      {
+        "name": "Chicken Achari",
+        "category": "Malabar Paratha",
+        "emoji": "🍗",
+        "id": 28,
+        "price": 99
+      },
+      {
+        "id": 29,
+        "emoji": "🔥",
+        "category": "Malabar Paratha",
+        "name": "Smokey BBQ Chicken",
+        "price": 99
+      },
+      {
+        "price": 125,
+        "id": 30,
+        "emoji": "🍗",
+        "category": "Malabar Paratha",
+        "name": "Crispy Creamy Chicken"
+      },
+      {
+        "price": 69,
+        "name": "Evergreen Melt",
+        "category": "Sandwiches",
+        "emoji": "🥗",
+        "id": 90001
+      },
+      {
+        "price": 89,
+        "id": 90002,
+        "emoji": "🥙",
+        "category": "Sandwiches",
+        "name": "Veggie Tandoor Crunch"
+      },
+      {
+        "price": 99,
+        "id": 90003,
+        "emoji": "🌶️",
+        "category": "Sandwiches",
+        "name": "Chatpata Hustle (Paneer)"
+      },
+      {
+        "price": 99,
+        "emoji": "🌶️",
+        "id": 90004,
+        "name": "Chatpata Hustle (Chicken)",
+        "category": "Sandwiches"
+      },
+      {
+        "price": 99,
+        "id": 90005,
+        "emoji": "🔥",
+        "category": "Sandwiches",
+        "name": "Thecha Theory Grill (Paneer)"
+      },
+      {
+        "category": "Sandwiches",
+        "name": "Thecha Theory Grill (Chicken)",
+        "id": 90006,
+        "emoji": "🔥",
+        "price": 99
+      },
+      {
+        "price": 99,
+        "name": "Smoky BBQ Streetwich (Paneer)",
+        "category": "Sandwiches",
+        "emoji": "🍖",
+        "id": 90007
+      },
+      {
+        "id": 90008,
+        "emoji": "🍗",
+        "category": "Sandwiches",
+        "name": "Smoky BBQ Streetwich (Chicken)",
+        "price": 99
+      },
+      {
+        "price": 99,
+        "id": 90009,
+        "emoji": "👑",
+        "category": "Sandwiches",
+        "name": "Awadhi Gold Grill (Paneer)"
+      },
+      {
+        "id": 90010,
+        "emoji": "👑",
+        "category": "Sandwiches",
+        "name": "Awadhi Gold Grill (Chicken)",
+        "price": 99
+      },
+      {
+        "id": 90011,
+        "emoji": "🧈",
+        "category": "Sandwiches",
+        "name": "Velvet Makhan Grill (Paneer)",
+        "price": 99
+      },
+      {
+        "name": "Velvet Makhan Grill (Chicken)",
+        "category": "Sandwiches",
+        "emoji": "🧈",
+        "id": 90012,
+        "price": 99
+      },
+      {
+        "price": 99,
+        "name": "Creamy Roastwich (Chicken)",
+        "category": "Sandwiches",
+        "emoji": "🍗",
+        "id": 90013
+      },
+      {
+        "name": "Saoji Fire Grill (Paneer)",
+        "category": "Sandwiches",
+        "emoji": "🌶️",
+        "id": 90014,
+        "price": 99
+      },
+      {
+        "price": 99,
+        "name": "Saoji Fire Grill (Chicken)",
+        "category": "Sandwiches",
+        "emoji": "🌶️",
+        "id": 90015
+      },
+      {
+        "category": "Sandwiches",
+        "name": "Extra Cheese Slice",
+        "id": 90016,
+        "emoji": "🧀",
+        "price": 20
+      }
+    ]
+  }
+}
