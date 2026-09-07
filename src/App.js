@@ -504,11 +504,20 @@ export default function CafePOS() {
 
     // Only mark offline after a grace period — prevents false "Offline" on slow connections
     let offlineTimer = null;
+    let autoReloadTimer = null;
     const markOfflineWithDelay = () => {
-      offlineTimer = setTimeout(() => setSyncStatus('offline'), 5000);
+      offlineTimer = setTimeout(() => {
+        setSyncStatus('offline');
+        // Auto-reload after 2 minutes offline to re-establish Firebase listeners
+        autoReloadTimer = setTimeout(() => {
+          console.log('[AutoRefresh] Reloading to restore Firebase connection');
+          window.location.reload();
+        }, 2 * 60 * 1000);
+      }, 5000);
     };
     const cancelOfflineTimer = () => {
       if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null; }
+      if (autoReloadTimer) { clearTimeout(autoReloadTimer); autoReloadTimer = null; }
     };
 
     // ORDERS - Real-time sync
@@ -950,10 +959,12 @@ export default function CafePOS() {
           );
         } catch (e2) {}
       }
-      // Clear localStorage except login
+      // Clear localStorage except login + view mode preference
       const loginState = localStorage.getItem('kaapfi_loggedIn');
+      const viewMode = localStorage.getItem('kaapfi_viewMode');
       localStorage.clear();
       if (loginState) localStorage.setItem('kaapfi_loggedIn', loginState);
+      if (viewMode) localStorage.setItem('kaapfi_viewMode', viewMode);
       window.location.reload();
     }
   };
