@@ -1231,25 +1231,25 @@ export default function CafePOS() {
 <meta charset="UTF-8">
 <title>Receipt</title>
 <style>
-  @page { size: 80mm auto; margin: 0; }
-  body { font-family: 'Courier New', monospace; margin: 0; padding: 10px; color: #000; font-size: 12px; }
-  .receipt { max-width: 300px; margin: 0 auto; }
-  .header { text-align: center; padding: 10px 0; }
-  .header h1 { font-family: Georgia, serif; font-size: 28px; margin: 0; font-weight: bold; letter-spacing: 1px; }
-  .estd { font-size: 11px; letter-spacing: 3px; margin-top: 4px; }
-  .address { text-align: center; font-size: 11px; padding: 8px 0; border-bottom: 1px dashed #000; }
-  .info { padding: 8px 0; border-bottom: 1px dashed #000; font-size: 11px; }
-  .info-row { display: flex; justify-content: space-between; padding: 2px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  @page { size: 80mm auto; margin: 1mm 2mm; }
+  html, body { margin: 0; padding: 0; width: 76mm; }
+  body { font-family: 'Courier New', monospace; color: #000; font-size: 12px; }
+  .receipt { width: 100%; }
+  .header { text-align: center; padding: 6px 0 4px; }
+  .header h1 { font-family: Georgia, serif; font-size: 22px; margin: 0; font-weight: bold; letter-spacing: 1px; }
+  .estd { font-size: 10px; letter-spacing: 3px; margin-top: 2px; }
+  .address { text-align: center; font-size: 10px; padding: 4px 0; border-bottom: 1px dashed #000; }
+  .info { padding: 4px 0; border-bottom: 1px dashed #000; font-size: 10px; }
+  .info-row { display: flex; justify-content: space-between; padding: 1px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 10px; }
   .header-row { border-bottom: 1px dashed #000; }
-  .header-row td { padding: 6px 0; font-weight: bold; }
-  .subtotal-row { border-top: 1px dashed #000; padding-top: 6px; }
-  .total-row { border-top: 2px solid #000; padding: 8px 0; font-size: 16px; font-weight: bold; }
-  .footer { text-align: center; padding: 12px 0; border-top: 1px dashed #000; font-size: 11px; }
-  .footer h2 { font-family: Georgia, serif; font-size: 14px; margin: 4px 0; font-weight: normal; font-style: italic; }
-  .footer .hindi { font-family: Arial, sans-serif; font-size: 14px; margin: 4px 0; }
-  .payment { text-align: center; padding: 6px 0; font-size: 11px; }
-  @media print { body { padding: 0; } .no-print { display: none; } }
+  .header-row td { padding: 4px 0; font-weight: bold; }
+  .subtotal-row { border-top: 1px dashed #000; padding-top: 4px; }
+  .total-row { border-top: 2px solid #000; padding: 5px 0; font-size: 14px; font-weight: bold; }
+  .footer { text-align: center; padding: 6px 0 4px; border-top: 1px dashed #000; font-size: 10px; }
+  .footer h2 { font-family: Georgia, serif; font-size: 12px; margin: 2px 0; font-weight: normal; font-style: italic; }
+  .footer .hindi { font-family: Arial, sans-serif; font-size: 12px; margin: 2px 0; }
+  .payment { text-align: center; padding: 3px 0; font-size: 10px; }
 </style>
 </head>
 <body>
@@ -1292,12 +1292,16 @@ export default function CafePOS() {
   </div>
 </div>
 <script>
-  window.onafterprint = function() { window.close(); };
-  setTimeout(function() { window.focus(); window.print(); }, 300);
+  window.onload = function() {
+    var h = document.body.scrollHeight + 20;
+    window.resizeTo(360, Math.min(h, 900));
+    window.onafterprint = function() { window.close(); };
+    setTimeout(function() { window.focus(); window.print(); }, 350);
+  };
 </script>
 </body>
 </html>`;
-    const win = window.open('', '', 'height=700,width=360');
+    const win = window.open('', '', 'height=500,width=360');
     if (!win) { alert('❌ Popup blocked! Allow popups for this site.\n\nIn Chrome: tap the popup icon in the address bar → "Always allow popups from build-brown-gamma.vercel.app"'); return; }
     win.document.write(receiptHTML);
     win.document.close();
@@ -1323,21 +1327,20 @@ export default function CafePOS() {
 <meta charset="UTF-8">
 <title>KOT #${kotNum}</title>
 <style>
-  @page { size: 80mm auto; margin: 2mm 3mm; }
-  body { font-family: 'Courier New', monospace; margin: 0; padding: 0; color: #000; }
-  .top { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
-  .cafe { font-size: 13px; font-weight: bold; letter-spacing: 1px; }
-  .kot-num { font-size: 28px; font-weight: 900; margin: 2px 0; }
-  .meta { font-size: 11px; }
-  .table-tag { font-size: 16px; font-weight: 900; margin: 4px 0; }
-  .item { display: flex; align-items: flex-start; gap: 6px; padding: 5px 0; border-bottom: 1px dashed #999; }
-  .qty { min-width: 28px; font-size: 20px; font-weight: 900; text-align: center; line-height: 1; }
-  .name { font-size: 17px; font-weight: 700; line-height: 1.2; flex: 1; }
-  .sop { font-size: 11px; font-weight: 400; color: #444; margin-top: 2px; }
-  .note { font-size: 12px; font-weight: 700; margin-top: 6px; border: 1px dashed #000; padding: 5px; background: #f9f0d0; }
-  .footer { text-align: center; font-size: 11px; margin-top: 6px; }
-  .no-print { text-align: center; padding: 16px; }
-  @media print { .no-print { display: none; } }
+  @page { size: 80mm auto; margin: 1mm 2mm; }
+  html, body { margin: 0; padding: 0; width: 76mm; }
+  body { font-family: 'Courier New', monospace; color: #000; font-size: 12px; }
+  .top { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
+  .cafe { font-size: 12px; font-weight: bold; letter-spacing: 1px; }
+  .kot-num { font-size: 26px; font-weight: 900; margin: 1px 0; line-height: 1.1; }
+  .meta { font-size: 10px; line-height: 1.3; }
+  .table-tag { font-size: 15px; font-weight: 900; margin: 2px 0; }
+  .item { display: flex; align-items: flex-start; gap: 6px; padding: 4px 0; border-bottom: 1px dashed #999; }
+  .qty { min-width: 26px; font-size: 19px; font-weight: 900; text-align: center; line-height: 1; }
+  .name { font-size: 16px; font-weight: 700; line-height: 1.2; flex: 1; }
+  .sop { font-size: 10px; font-weight: 400; color: #444; margin-top: 1px; }
+  .note { font-size: 11px; font-weight: 700; margin-top: 4px; border: 1px dashed #000; padding: 3px 5px; }
+  .footer { text-align: center; font-size: 10px; margin-top: 4px; padding-bottom: 2px; }
 </style>
 </head>
 <body>
@@ -1352,12 +1355,16 @@ ${itemsHTML}
 ${order.specialInstructions ? `<div class="note">📝 ${order.specialInstructions}</div>` : ''}
 <div class="footer">— kitchen copy —</div>
 <script>
-  window.onafterprint = function() { window.close(); };
-  setTimeout(function() { window.focus(); window.print(); }, 300);
+  window.onload = function() {
+    var h = document.body.scrollHeight + 20;
+    window.resizeTo(360, Math.min(h, 700));
+    window.onafterprint = function() { window.close(); };
+    setTimeout(function() { window.focus(); window.print(); }, 350);
+  };
 </script>
 </body>
 </html>`;
-    const win = window.open('', '', 'height=600,width=360');
+    const win = window.open('', '', 'height=400,width=360');
     if (!win) { alert('❌ Popup blocked! Allow popups for this site to print KOTs.'); return; }
     win.document.write(kotHTML);
     win.document.close();
