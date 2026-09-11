@@ -4617,37 +4617,37 @@ export default function CafePOS() {
                 </label>
               </div>
               <div style={{ padding: '14px', background: 'rgba(33,150,243,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(33,150,243,0.3)' }}>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>🖨️ Connect Thermal Printer</div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '10px' }}>Connect once — KOT and bill print directly with no dialog and auto paper cut.</div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '10px' }}>🖨️ Mac / Laptop Printer Setup</div>
 
-                {/* Bluetooth */}
-                <div style={{ marginBottom: '10px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#90CAF9', marginBottom: '6px' }}>📱 Bluetooth (for phones & tablets)</div>
-                  {btConnected ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: '800', color: '#69F0AE' }}>✅ {btDeviceName}</span>
-                      <button onClick={() => { btCharRef.current = null; setBtConnected(false); setBtDeviceName(''); }} style={{ padding: '5px 12px', background: 'transparent', color: '#ef9a9a', border: '1px solid #ef9a9a', borderRadius: '6px', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>Disconnect</button>
-                    </div>
-                  ) : (
-                    <button onClick={connectBluetooth} style={{ padding: '9px 18px', background: '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%' }}>
-                      🔵 Scan & Connect Bluetooth Printer
-                    </button>
-                  )}
+                {/* Step 1 */}
+                <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '10px 12px', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#FC8019', marginBottom: '4px' }}>Step 1 — Add printer to Mac (one time)</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
+                    1. Turn on your thermal printer (Bluetooth LED blinks)<br/>
+                    2. Apple menu → <b>System Settings → Bluetooth</b> → pair the printer<br/>
+                    3. Then go to <b>System Settings → Printers & Scanners</b><br/>
+                    4. Click <b>+ Add Printer</b> → select your thermal printer → Add<br/>
+                    5. Right-click the printer → <b>Set as Default Printer</b>
+                  </div>
                 </div>
 
-                {/* USB */}
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '10px' }}>
-                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#90CAF9', marginBottom: '6px' }}>💻 USB Cable (for laptops / desktop)</div>
-                  {printerConnected ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '12px', fontWeight: '800', color: '#69F0AE' }}>✅ USB Printer Connected</span>
-                      <button onClick={() => { serialPortRef.current = null; setPrinterConnected(false); }} style={{ padding: '5px 12px', background: 'transparent', color: '#ef9a9a', border: '1px solid #ef9a9a', borderRadius: '6px', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>Disconnect</button>
-                    </div>
-                  ) : (
-                    <button onClick={connectPrinter} style={{ padding: '9px 18px', background: '#37474F', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%' }}>
-                      🔌 Connect USB Printer
-                    </button>
-                  )}
+                {/* Step 2 */}
+                <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '10px 12px', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '12px', fontWeight: '800', color: '#FC8019', marginBottom: '4px' }}>Step 2 — Zero-dialog printing (skip the print popup)</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', lineHeight: 1.6 }}>
+                    Open <b>Terminal</b> and run this command to launch Chrome in kiosk-print mode — prints instantly with no dialog:
+                  </div>
+                  <div style={{ marginTop: '6px', background: '#000', borderRadius: '6px', padding: '8px 10px', fontFamily: 'monospace', fontSize: '10px', color: '#69F0AE', wordBreak: 'break-all', userSelect: 'all' }}>
+                    /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --kiosk-printing https://build-brown-gamma.vercel.app
+                  </div>
+                  <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>Tip: drag this to your Dock as a shortcut so staff open it with one click every day.</div>
+                </div>
+
+                {/* Step 3 - normal mode */}
+                <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', padding: '8px 12px' }}>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>
+                    <b style={{ color: 'rgba(255,255,255,0.7)' }}>If using normal Chrome:</b> when the print dialog opens, change <b>Destination</b> from "Save as PDF" to your thermal printer — Chrome remembers it from then on.
+                  </div>
                 </div>
               </div>
               <div style={{ padding: '12px', background: 'rgba(230,74,25,0.15)', borderRadius: '8px', fontSize: '12px', color: '#FC8019', marginTop: '12px', border: '1px solid rgba(230,74,25,0.3)' }}>🔒 Admin features are password protected</div>
