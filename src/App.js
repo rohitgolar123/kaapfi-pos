@@ -606,28 +606,25 @@ export default function CafePOS() {
     return false;
   };
 
-  const buildEscpos = (lines) => {
-    // lines: array of { type: 'init'|'text'|'bold'|'cut'|'feed', text?, size? }
+  // Minimal ESC/POS — only universally-safe commands so no binary garbage prints
+  const buildPrintBytes = (lines) => {
     const ESC = 0x1B, GS = 0x1D, LF = 0x0A;
     const bytes = [];
-    const txt = (s) => { for (let i=0;i<s.length;i++) bytes.push(s.charCodeAt(i) & 0xff); };
-    bytes.push(ESC, 0x40); // init
-    bytes.push(ESC, 0x74, 0x00); // CP437 code page
+    const txt = (s) => {
+      const safe = String(s).replace(/₹/g, 'Rs').replace(/[^\x20-\x7E]/g, '?');
+      for (let i = 0; i < safe.length; i++) bytes.push(safe.charCodeAt(i));
+      bytes.push(LF);
+    };
+    bytes.push(ESC, 0x40); // ESC @ = init / reset
     for (const l of lines) {
-      if (l.align === 'center') bytes.push(ESC, 0x61, 0x01);
-      else bytes.push(ESC, 0x61, 0x00);
-      if (l.bold) bytes.push(ESC, 0x45, 0x01);
-      const sz = l.size || 1;
-      if (sz === 2) bytes.push(ESC, 0x21, 0x30); // double w+h
-      else if (sz === 1.5) bytes.push(ESC, 0x21, 0x10); // double h only
-      else bytes.push(ESC, 0x21, 0x00); // normal
-      if (l.divider) { for (let i=0;i<32;i++) bytes.push(0x2D); bytes.push(LF); continue; }
-      if (l.text != null) { txt(String(l.text).replace(/₹/g,'Rs').replace(/[^\x00-\x7F]/g,'?')); bytes.push(LF); }
-      if (l.bold) bytes.push(ESC, 0x45, 0x00);
-      bytes.push(ESC, 0x21, 0x00);
+      if (l.divider) { txt('--------------------------------'); continue; }
+      bytes.push(ESC, 0x61, l.center ? 0x01 : 0x00); // ESC a = align
+      if (l.bold) bytes.push(ESC, 0x45, 0x01);        // ESC E = bold on
+      txt(l.text || '');
+      if (l.bold) bytes.push(ESC, 0x45, 0x00);        // ESC E = bold off
     }
-    bytes.push(LF, LF);
-    bytes.push(GS, 0x56, 0x42, 0x05); // partial cut + 5mm feed
+    bytes.push(LF, LF, LF, LF);
+    bytes.push(GS, 0x56, 0x01); // GS V 1 = cut
     return new Uint8Array(bytes);
   };
 
@@ -1366,10 +1363,47 @@ export default function CafePOS() {
     if (currentOrder.length === 0) { alert('No items'); return; }
     const now = new Date();
     const billNo = `K90-${now.getFullYear().toString().slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(todayOrders.length + 1).padStart(3,'0')}`;
+    const totalItems = currentOrder.reduce((sum, i) => sum + i.quantity, 0);
+
+    // Direct BT/USB path — plain text, no dialog, instant print
+    if (btConnected || printerConnected) {
+      const W = 32; // chars wide on 80mm paper
+      const rpad = (a, b, tot) => {
+        const s = `${a}${b}`;
+        return s.length >= tot ? s : a + ' '.repeat(tot - a.length - String(b).length) + b;
+      };
+      const lines = [
+        { text: settings.cafeName, center: true, bold: true },
+        { text: settings.address, center: true },
+        { text: settings.phone, center: true },
+        { divider: true },
+        { text: rpad(`Bill: ${billNo}`, '', W) },
+        { text: rpad('Date:', now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}), W) },
+        { text: rpad('Time:', now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}), W) },
+        ...(customerName ? [{ text: rpad('Name:', customerName, W) }] : []),
+        ...(customerPhone ? [{ text: rpad('Phone:', customerPhone, W) }] : []),
+        { divider: true },
+        ...currentOrder.map(i => ({ text: rpad(`${i.quantity}x ${i.name}`, `Rs${i.price * i.quantity}`, W) })),
+        { divider: true },
+        { text: rpad(`Items: ${totalItems}   Subtotal:`, `Rs${subtotal}`, W) },
+        ...(totalDiscount > 0 ? [{ text: rpad('Discount:', `-Rs${totalDiscount.toFixed(0)}`, W) }] : []),
+        ...(tax > 0 ? [{ text: rpad('Tax:', `Rs${tax.toFixed(0)}`, W) }] : []),
+        { divider: true },
+        { text: rpad('TOTAL:', `Rs${total.toFixed(0)}`, W), bold: true },
+        { divider: true },
+        { text: `Payment: ${paymentMethod.toUpperCase()}`, center: true },
+        { text: settings.tagline || '', center: true },
+        { text: 'Thank you! Visit again', center: true },
+        { text: 'IG: @kaapfi90s', center: true },
+      ];
+      sendToAnyPrinter(buildPrintBytes(lines));
+      return;
+    }
+
+    // Fallback: browser print dialog (desktop or no BT)
     const itemsHTML = currentOrder.map(i =>
       `<tr><td style="padding:3px 0;">${i.quantity}</td><td style="padding:3px 0;">${i.name}</td><td style="padding:3px 0;text-align:right;">₹${i.price}</td><td style="padding:3px 0;text-align:right;">₹${i.price * i.quantity}</td></tr>`
     ).join('');
-    const totalItems = currentOrder.reduce((sum, i) => sum + i.quantity, 0);
     printWithIframe(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
       ${PRINT_CSS}
       body { font-size: 11px; }
@@ -1411,6 +1445,34 @@ export default function CafePOS() {
     const now = new Date(order.timestamp || Date.now());
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    // Direct BT/USB path — plain text, no dialog, instant print
+    if (btConnected || printerConnected) {
+      const lines = [
+        { divider: true },
+        { text: settings.cafeName, center: true, bold: true },
+        { text: `KOT #${kotNum}`, center: true, bold: true },
+        ...(tableLabel ? [{ text: tableLabel, center: true, bold: true }] : []),
+        ...(order.customerName ? [{ text: order.customerName, center: true }] : []),
+        { text: `${dateStr}  ${timeStr}`, center: true },
+        { divider: true },
+        ...items.flatMap(i => {
+          const sops = (menuSOPs[i.name] || []);
+          const sopText = sops.length > 0 ? sops.map(r => `  ${r.ingredient} ${r.quantity * (i.quantity || 1)}`).join(' ') : null;
+          return [
+            { text: `x${i.quantity || 1}  ${i.name}`, bold: true },
+            ...(sopText ? [{ text: sopText }] : []),
+          ];
+        }),
+        { divider: true },
+        ...(order.specialInstructions ? [{ text: `NOTE: ${order.specialInstructions}`, bold: true }, { divider: true }] : []),
+        { text: '- kitchen copy -', center: true },
+      ];
+      sendToAnyPrinter(buildPrintBytes(lines));
+      return;
+    }
+
+    // Fallback: browser print dialog (desktop or no BT)
     const itemsHTML = items.map(i => {
       const sops = (menuSOPs[i.name] || []);
       const sopLine = sops.length > 0
@@ -1435,7 +1497,7 @@ export default function CafePOS() {
       <div style="font-size:10px;">${dateStr} &nbsp; ${timeStr}</div>
     </div>
     ${itemsHTML}
-    ${order.specialInstructions ? `<div style="font-size:11px;font-weight:700;margin-top:4px;border:1px dashed #000;padding:3px 5px;">📝 ${order.specialInstructions}</div>` : ''}
+    ${order.specialInstructions ? `<div style="font-size:11px;font-weight:700;margin-top:4px;border:1px dashed #000;padding:3px 5px;">NOTE: ${order.specialInstructions}</div>` : ''}
     <div class="footer">— kitchen copy —</div>
     </body></html>`);
   };
