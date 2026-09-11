@@ -1291,14 +1291,14 @@ export default function CafePOS() {
     <div style="margin-top:4px;">IG: @kaapfi90s</div>
   </div>
 </div>
-<div class="no-print" style="text-align:center; padding:20px;">
-  <button onclick="window.print()" style="background:#000; color:#fff; padding:12px 24px; border:none; font-size:14px; cursor:pointer; font-weight:bold;">PRINT RECEIPT</button>
-  <button onclick="window.close()" style="background:#fff; color:#000; padding:12px 24px; border:1px solid #000; font-size:14px; cursor:pointer; font-weight:bold; margin-left:8px;">BACK TO BILLING</button>
-</div>
+<script>
+  window.onafterprint = function() { window.close(); };
+  setTimeout(function() { window.focus(); window.print(); }, 300);
+</script>
 </body>
 </html>`;
-    const win = window.open('', '', 'height=700,width=400');
-    if (!win) { alert('❌ Popup blocked! Please allow popups for this site to print bills.\n\nIn Chrome: click the popup icon in the address bar → "Always allow popups from build-brown-gamma.vercel.app"'); return; }
+    const win = window.open('', '', 'height=700,width=360');
+    if (!win) { alert('❌ Popup blocked! Allow popups for this site.\n\nIn Chrome: tap the popup icon in the address bar → "Always allow popups from build-brown-gamma.vercel.app"'); return; }
     win.document.write(receiptHTML);
     win.document.close();
   };
@@ -1351,17 +1351,16 @@ export default function CafePOS() {
 ${itemsHTML}
 ${order.specialInstructions ? `<div class="note">📝 ${order.specialInstructions}</div>` : ''}
 <div class="footer">— kitchen copy —</div>
-<div class="no-print">
-  <button onclick="window.print()" style="background:#000;color:#fff;padding:10px 24px;border:none;font-size:14px;font-weight:bold;cursor:pointer;">PRINT KOT</button>
-  <button onclick="window.close()" style="background:#fff;color:#000;padding:10px 20px;border:1px solid #000;font-size:14px;cursor:pointer;margin-left:8px;">CLOSE</button>
-</div>
+<script>
+  window.onafterprint = function() { window.close(); };
+  setTimeout(function() { window.focus(); window.print(); }, 300);
+</script>
 </body>
 </html>`;
     const win = window.open('', '', 'height=600,width=360');
     if (!win) { alert('❌ Popup blocked! Allow popups for this site to print KOTs.'); return; }
     win.document.write(kotHTML);
     win.document.close();
-    setTimeout(() => { try { win.print(); } catch(e) {} }, 400);
   };
 
   const sendWhatsApp = () => {
