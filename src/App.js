@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot, enableIndexedDbPersistence, clearIndexedDbPersistence, terminate, orderBy } from "firebase/firestore";
+import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot, orderBy } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc",
@@ -14,7 +14,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-try { enableIndexedDbPersistence(db).catch(() => {}); } catch (e) {}
 const CAFE_PASSWORD = "Kaapfi@737";
 const DELETE_PASSWORD = "9923022925";
 
@@ -35,6 +34,7 @@ const defaultSettings = {
   specialLoyaltyEnd: "22:30",
   receiptSize: "80mm",
   preventNegativeStock: false,
+  autoPrintKOT: false,
 };
 
 const defaultMenu = [
@@ -138,31 +138,31 @@ function toISTDate(ts) {
 }
 
 async function saveInventoryToCloud(inventory) {
-  try { await setDoc(doc(db, "appData", "inventory"), { items: inventory, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+  try { await apiWrite('set', 'appData/inventory', { items: inventory, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
 
 async function saveExpensesToCloud(expenses) {
-  try { await setDoc(doc(db, "appData", "expenses"), { items: expenses, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+  try { await apiWrite('set', 'appData/expenses', { items: expenses, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
 
 async function saveMenuToCloud(menu) {
-  try { await setDoc(doc(db, "appData", "menu"), { items: menu, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+  try { await apiWrite('set', 'appData/menu', { items: menu, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
 
 async function saveSOPsToCloud(sops) {
-  try { await setDoc(doc(db, "appData", "sops"), { data: sops, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+  try { await apiWrite('set', 'appData/sops', { data: sops, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
 
 async function savePromosToCloud(promos) {
-  try { await setDoc(doc(db, "appData", "promos"), { items: promos, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+  try { await apiWrite('set', 'appData/promos', { items: promos, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
 
 async function saveSettingsToCloud(settings) {
-  try { await setDoc(doc(db, "appData", "settings"), { data: settings, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+  try { await apiWrite('set', 'appData/settings', { data: settings, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
 
 async function saveTableStatusToCloud(tableStatus) {
-  try { await setDoc(doc(db, "appData", "tableStatus"), { data: tableStatus, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+  try { await apiWrite('set', 'appData/tableStatus', { data: tableStatus, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
 async function saveUpsellItemsToCloud(items) {
   try { await setDoc(doc(db, "appData", "upsellItems"), { items, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
@@ -254,12 +254,21 @@ async function trackUpsellEvent(sessionId, eventType, itemId, cartValue) {
   try { await addDoc(collection(db, "upsellEvents"), { sessionId, eventType, itemId: itemId || null, cartValue, timestamp: new Date().toISOString(), date: new Date().toISOString().split('T')[0] }); } catch (e) {}
 }
 
+async function apiWrite(op, path, data) {
+  const r = await fetch('/api/write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ op, path, data })
+  });
+  return r.json();
+}
+
 async function saveOrderToFirebase(order) {
   try {
-    const docRef = await addDoc(collection(db, "orders"), { ...order, timestamp: new Date().toISOString() });
-    return docRef.id;
+    const result = await apiWrite('add', 'orders', { ...order, timestamp: new Date().toISOString() });
+    return result.id || null;
   } catch (e) {
-    console.error('[saveOrderToFirebase] FAILED:', e.code, e.message);
+    console.error('[saveOrderToFirebase] FAILED:', e);
     return null;
   }
 }
@@ -442,6 +451,28 @@ export default function CafePOS() {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Auto-reload when a new bundle is deployed — forces all devices to update without manual refresh
+  useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        const res = await fetch('/asset-manifest.json?t=' + Date.now());
+        const manifest = await res.json();
+        const latestBundle = manifest?.files?.['main.js'] || '';
+        const stored = localStorage.getItem('kaapfi_bundle');
+        if (stored && latestBundle && stored !== latestBundle) {
+          console.log('[AutoUpdate] New bundle detected, reloading...');
+          localStorage.setItem('kaapfi_bundle', latestBundle);
+          window.location.reload();
+        } else {
+          localStorage.setItem('kaapfi_bundle', latestBundle);
+        }
+      } catch (e) {}
+    };
+    checkVersion();
+    const versionCheck = setInterval(checkVersion, 60000); // check every 60s
+    return () => clearInterval(versionCheck);
+  }, []);
   const setViewMode = (mode) => { setViewModeOverride(mode); localStorage.setItem('kaapfi_viewMode', mode); };
   const [cashCalcInput, setCashCalcInput] = useState('');
   const [cashCalcBill, setCashCalcBill] = useState('');
@@ -496,206 +527,130 @@ export default function CafePOS() {
     }
   }, []);
 
-  // REAL-TIME FIREBASE LISTENERS - SYNC ACROSS ALL DEVICES
+  // POLLING SYNC - fetches fresh data from Firebase every few seconds.
+  // No WebSockets, no onSnapshot — works on every device, every network, guaranteed.
   useEffect(() => {
     if (!isLoggedIn) return;
 
     setSyncStatus('syncing');
 
-    // Only mark offline after a grace period — prevents false "Offline" on slow connections
-    let offlineTimer = null;
-    let autoReloadTimer = null;
-    const markOfflineWithDelay = () => {
-      offlineTimer = setTimeout(() => {
-        setSyncStatus('offline');
-        // Auto-reload after 2 minutes offline to re-establish Firebase listeners
-        autoReloadTimer = setTimeout(() => {
-          console.log('[AutoRefresh] Reloading to restore Firebase connection');
-          window.location.reload();
-        }, 2 * 60 * 1000);
-      }, 5000);
-    };
-    const cancelOfflineTimer = () => {
-      if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null; }
-      if (autoReloadTimer) { clearTimeout(autoReloadTimer); autoReloadTimer = null; }
-    };
+    const todayISO = () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString(); };
 
-    // ORDERS - Real-time sync
-    const unsubOrders = onSnapshot(
-      collection(db, "orders"),
-      (snapshot) => {
-        cancelOfflineTimer();
-        const allOrders = [];
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          allOrders.push({ id: data.id || doc.id, firebaseDocId: doc.id, ...data });
-        });
-        allOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        setOrders(allOrders);
-        setSyncStatus('connected');
-      },
-      (error) => {
-        console.error('Orders sync error:', error);
-        markOfflineWithDelay();
-      }
-    );
+    // ── Fast poll: orders via Vercel API proxy every 5 seconds ────────────
+    // Requests go to same domain as the app — bypasses any Firebase network blocks.
+    const pollFast = async () => {
+      try {
+        const r = await fetch('/api/orders?t=' + Date.now());
+        if (!r.ok) throw new Error('api error');
+        const { orders: todayOrders } = await r.json();
 
-    // INVENTORY - Real-time sync with auto-initialization
-    let invWritePending = false;
-    const unsubInventory = onSnapshot(doc(db, "appData", "inventory"), (snap) => {
-      if (snap.exists()) {
-        const cloudInventory = snap.data().items || [];
-        if (cloudInventory.length === 0 && !invWritePending) {
-          invWritePending = true;
-          saveInventoryToCloud(defaultInventory).then(() => { invWritePending = false; });
-          setInventory(defaultInventory);
-        } else {
-          setInventory(cloudInventory);
-        }
-      } else if (!invWritePending) {
-        invWritePending = true;
-        saveInventoryToCloud(defaultInventory).then(() => { invWritePending = false; });
-        setInventory(defaultInventory);
-      }
-    });
-
-    // EXPENSES - Real-time sync
-    const unsubExpenses = onSnapshot(doc(db, "appData", "expenses"), (snap) => {
-      if (snap.exists()) setExpenses(snap.data().items || []);
-    });
-
-    // MENU - Real-time sync with guaranteed merge so default items never vanish
-    // Write-guard: only write back once per session to avoid listener feedback loops
-    let menuWritePending = false;
-    const defaultCategoryNames = [...new Set(defaultMenu.map(i => i.category))];
-    const unsubMenu = onSnapshot(doc(db, "appData", "menu"), (snap) => {
-      if (snap.exists()) {
-        const cloudItems = snap.data().items || [];
-        if (cloudItems.length === 0) {
-          setMenuItems(defaultMenu);
-          if (!menuWritePending) { menuWritePending = true; saveMenuToCloud(defaultMenu).then(() => { menuWritePending = false; }); }
-        } else {
-          const cloudIds = new Set(cloudItems.map(i => String(i.id)));
-          const missing = defaultMenu.filter(i => !cloudIds.has(String(i.id)));
-          if (missing.length > 0 && !menuWritePending) {
-            const merged = [...cloudItems, ...missing];
-            menuWritePending = true;
-            saveMenuToCloud(merged).then(() => { menuWritePending = false; });
-            setMenuItems(merged);
-          } else {
-            setMenuItems(cloudItems);
-          }
-        }
-      } else {
-        setMenuItems(defaultMenu);
-        if (!menuWritePending) { menuWritePending = true; saveMenuToCloud(defaultMenu).then(() => { menuWritePending = false; }); }
-      }
-    });
-
-    // CATEGORIES - Real-time sync with guaranteed base categories
-    let catsWritePending = false;
-    const defaultCats = [...new Set(defaultMenu.map(i => i.category))];
-    const unsubCategories = onSnapshot(doc(db, "appData", "categories"), (snap) => {
-      if (snap.exists()) {
-        const cats = snap.data().items || [];
-        const merged = [...new Set([...defaultCats, ...cats])];
-        setCustomCategories(merged);
-        localStorage.setItem('customCategories', JSON.stringify(merged));
-        if (merged.length !== cats.length && !catsWritePending) {
-          catsWritePending = true;
-          saveCategoriesToCloud(merged).then(() => { catsWritePending = false; });
-        }
-      } else {
-        const baseCats = [...defaultCats, 'Sandwiches', 'water bottle'];
-        setCustomCategories(baseCats);
-        if (!catsWritePending) { catsWritePending = true; saveCategoriesToCloud(baseCats).then(() => { catsWritePending = false; }); }
-      }
-    });
-
-    // KOT COUNTER - daily sequential KOT numbers
-    const today = getISTDateStr();
-    let kotWritePending = false;
-    const unsubKOT = onSnapshot(doc(db, "appData", "kotCounter"), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.date !== today && !kotWritePending) {
-          kotWritePending = true;
-          setDoc(doc(db, "appData", "kotCounter"), { count: 0, date: today }).then(() => { kotWritePending = false; });
-          setKotDailyCounter(0);
-        } else {
-          setKotDailyCounter(data.count || 0);
-        }
-      } else if (!kotWritePending) {
-        kotWritePending = true;
-        setDoc(doc(db, "appData", "kotCounter"), { count: 0, date: today }).then(() => { kotWritePending = false; });
-      }
-    });
-
-    // SOPs - Real-time sync
-    let sopWritePending = false;
-    const unsubSOPs = onSnapshot(doc(db, "appData", "sops"), (snap) => {
-      if (snap.exists()) {
-        setMenuSOPs(snap.data().data || defaultSOPs);
-      } else if (!sopWritePending) {
-        sopWritePending = true;
-        saveSOPsToCloud(defaultSOPs).then(() => { sopWritePending = false; });
-      }
-    });
-
-    // PROMOS - Real-time sync
-    const unsubPromos = onSnapshot(doc(db, "appData", "promos"), (snap) => {
-      if (snap.exists()) setPromoCodes(snap.data().items || []);
-    });
-
-    // SETTINGS - Real-time sync
-    const unsubSettings = onSnapshot(doc(db, "appData", "settings"), (snap) => {
-      if (snap.exists()) setSettings({ ...defaultSettings, ...snap.data().data });
-    });
-
-    // TABLE STATUS - Real-time sync with stale-data auto-clear
-    const unsubTableStatus = onSnapshot(doc(db, "appData", "tableStatus"), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data().data || { 1: 'available', 2: 'available', 3: 'available', 4: 'available' };
         setOrders(prev => {
-          const today = new Date().toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' });
-          const activeTableNums = new Set(prev.filter(o => (o.status || '') !== 'delivered' && o.tableNumber && o.tableNumber !== 'T/A' && (o.timestamp ? new Date(o.timestamp).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' }) === today : false)).map(o => String(o.tableNumber)));
-          const cleaned = Object.fromEntries(Object.entries(data).map(([k, v]) => [k, activeTableNums.has(String(k)) ? v : 'available']));
-          setTableStatus(cleaned);
-          return prev;
+          const older = prev.filter(o => (o.timestamp || '') < todayISO());
+          const merged = [...older, ...todayOrders];
+          merged.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          return merged;
         });
-      }
-    });
 
-    // UPSELL ITEMS - Real-time sync
-    const unsubUpsell = onSnapshot(doc(db, "appData", "upsellItems"), (snap) => {
-      if (snap.exists()) setUpsellItems(snap.data().items || []);
-    });
+        const activeTableNums = new Set(
+          todayOrders.filter(o => (o.status || '') !== 'delivered' && o.tableNumber && o.tableNumber !== 'T/A')
+                     .map(o => String(o.tableNumber))
+        );
+        setTableStatus(prev => {
+          const next = { ...prev };
+          [1,2,3,4].forEach(n => {
+            next[n] = activeTableNums.has(String(n)) ? (prev[n] === 'available' ? 'occupied' : prev[n]) : 'available';
+          });
+          return next;
+        });
 
-    // UPSELL SETTINGS - Real-time sync
-    const unsubUpsellSettings = onSnapshot(doc(db, "appData", "upsellSettings"), (snap) => {
-      if (snap.exists()) setUpsellSettings(prev => ({ ...prev, ...snap.data() }));
-    });
+        setSyncStatus('connected');
+      } catch (e) { setSyncStatus('offline'); }
+    };
 
-    // MENU ITEM IMAGES - load from localStorage
+    // ── Slow poll: menu, settings, etc. via Vercel API proxy every 30s ───
+    const pollSlow = async () => {
+      try {
+        const r = await fetch('/api/appdata?t=' + Date.now());
+        if (!r.ok) return;
+        const d = await r.json();
+
+        // MENU
+        if (d.menu) {
+          const cloudItems = d.menu.items || [];
+          if (cloudItems.length > 0) {
+            const cloudIds = new Set(cloudItems.map(i => String(i.id)));
+            const missing = defaultMenu.filter(i => !cloudIds.has(String(i.id)));
+            setMenuItems(missing.length > 0 ? [...cloudItems, ...missing] : cloudItems);
+          } else setMenuItems(defaultMenu);
+        } else setMenuItems(defaultMenu);
+
+        // SETTINGS
+        if (d.settings?.data) setSettings({ ...defaultSettings, ...d.settings.data });
+
+        // INVENTORY
+        if (d.inventory?.items?.length > 0) setInventory(d.inventory.items);
+        else setInventory(defaultInventory);
+
+        // EXPENSES
+        if (d.expenses?.items) setExpenses(d.expenses.items);
+
+        // PROMOS
+        if (d.promos?.items) setPromoCodes(d.promos.items);
+
+        // CATEGORIES
+        const defaultCats = [...new Set(defaultMenu.map(i => i.category))];
+        if (d.categories?.items) {
+          const merged = [...new Set([...defaultCats, ...d.categories.items])];
+          setCustomCategories(merged);
+          localStorage.setItem('customCategories', JSON.stringify(merged));
+        } else setCustomCategories(defaultCats);
+
+        // KOT COUNTER
+        const kotToday = getISTDateStr();
+        if (d.kotCounter) {
+          if (d.kotCounter.date !== kotToday) {
+            setDoc(doc(db, "appData", "kotCounter"), { count: 0, date: kotToday }).catch(() => {});
+            setKotDailyCounter(0);
+          } else setKotDailyCounter(d.kotCounter.count || 0);
+        } else {
+          setDoc(doc(db, "appData", "kotCounter"), { count: 0, date: kotToday }).catch(() => {});
+        }
+
+        // SOPs
+        if (d.sops?.data) setMenuSOPs(d.sops.data);
+        else saveSOPsToCloud(defaultSOPs).catch(() => {});
+
+        // UPSELL
+        if (d.upsellItems?.items) setUpsellItems(d.upsellItems.items);
+        if (d.upsellSettings) setUpsellSettings(prev => ({ ...prev, ...d.upsellSettings }));
+
+        // TABLE STATUS
+        if (d.tableStatus?.data) setTableStatus(prev => ({ ...prev, ...d.tableStatus.data }));
+
+      } catch (e) { /* keep last known state */ }
+    };
+
+    // ── Menu images from localStorage ──────────────────────────────────────
     try {
       const stored = JSON.parse(localStorage.getItem('menuItemImages') || '{}');
       setMenuItemImages(stored);
     } catch (e) {}
 
-    // Cleanup on unmount
+    // Immediate first load
+    pollFast();
+    pollSlow();
+
+    // Wake up on visibility change (device screen on / tab focused)
+    const handleVisibility = () => { if (!document.hidden) { pollFast(); } };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const fastInterval = setInterval(pollFast, 5000);
+    const slowInterval = setInterval(pollSlow, 30000);
+
     return () => {
-      cancelOfflineTimer();
-      unsubOrders();
-      unsubInventory();
-      unsubExpenses();
-      unsubMenu();
-      unsubKOT();
-      unsubSOPs();
-      unsubPromos();
-      unsubSettings();
-      unsubTableStatus();
-      unsubUpsell();
-      unsubUpsellSettings();
+      clearInterval(fastInterval);
+      clearInterval(slowInterval);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [isLoggedIn]);
 
@@ -922,14 +877,23 @@ export default function CafePOS() {
     } catch(e) {}
   };
 
-  // Kitchen alert — play sound when new orders arrive
+  // Kitchen alert — play sound + auto-print KOT when new orders arrive
   const prevOrderCountRef = useRef(0);
+  const autoPrintedRef = useRef(null); // null = not yet seeded (initial load)
   useEffect(() => {
-    const activeCount = orders.filter(o => o.status === 'new' || o.status === 'in_progress' || (!o.status && o.paymentStatus === 'pending')).length;
-    if (prevOrderCountRef.current > 0 && activeCount > prevOrderCountRef.current) {
-      if (activeTab !== 'kitchen') {
-        setKitchenAlertActive(true);
+    const activeOrders = orders.filter(o => o.status === 'new' || o.status === 'in_progress' || (!o.status && o.paymentStatus === 'pending'));
+    const activeCount = activeOrders.length;
+
+    if (autoPrintedRef.current === null) {
+      // Seed on first load — don't auto-print orders that already exist
+      autoPrintedRef.current = new Set(activeOrders.map(o => o.id));
+    } else {
+      const newOrders = activeOrders.filter(o => !autoPrintedRef.current.has(o.id));
+      newOrders.forEach(o => autoPrintedRef.current.add(o.id));
+      if (newOrders.length > 0) {
+        if (activeTab !== 'kitchen') { setKitchenAlertActive(true); }
         playKOTSound();
+        if (settings.autoPrintKOT) { newOrders.forEach(o => printKOT(o)); }
       }
     }
     prevOrderCountRef.current = activeCount;
@@ -945,20 +909,12 @@ export default function CafePOS() {
   const clearLocalCache = async () => {
     if (window.confirm('⚠️ This will:\n\n1. Clear all local browser cache\n2. Re-sync fresh data from Firebase\n3. Ensure both devices show SAME data\n\nContinue?')) {
       try {
-        // Terminate Firestore first (required before clearing persistence)
-        await terminate(db);
-        // Clear ALL Firestore cached data and pending writes
-        await clearIndexedDbPersistence(db);
-      } catch (e) {
-        // Fallback: manually delete all Firestore IndexedDB databases
-        try {
-          const dbs = await window.indexedDB.databases();
-          await Promise.all(
-            dbs.filter(d => d.name && d.name.includes('firestore'))
-               .map(d => new Promise((res) => { const r = window.indexedDB.deleteDatabase(d.name); r.onsuccess = res; r.onerror = res; }))
-          );
-        } catch (e2) {}
-      }
+        const dbs = await window.indexedDB.databases();
+        await Promise.all(
+          dbs.filter(d => d.name && d.name.includes('firestore'))
+             .map(d => new Promise((res) => { const r = window.indexedDB.deleteDatabase(d.name); r.onsuccess = res; r.onerror = res; }))
+        );
+      } catch (e) {}
       // Clear localStorage except login + view mode preference
       const loginState = localStorage.getItem('kaapfi_loggedIn');
       const viewMode = localStorage.getItem('kaapfi_viewMode');
@@ -1089,7 +1045,7 @@ export default function CafePOS() {
     const newSubtotal = merged.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
     const newTax = Math.round(newSubtotal * (settings.taxRate || 0) / 100);
     const newTotal = newSubtotal + newTax;
-    await updateDoc(doc(db, "orders", existingOrder.firebaseDocId), {
+    await apiWrite('update', 'orders/' + existingOrder.firebaseDocId, {
       items: merged,
       subtotal: newSubtotal,
       tax: newTax,
@@ -1140,7 +1096,7 @@ export default function CafePOS() {
         setSyncStatus('connected');
         // Background: update with real KOT number, save customer, promo, inventory
         kotNumPromise.then(kotNum => {
-          updateDoc(doc(db, 'orders', firebaseDocId), { kotNumber: kotNum }).catch(() => {});
+          apiWrite('update', 'orders/' + firebaseDocId, { kotNumber: kotNum }).catch(() => {});
         });
         if (customerPhone.length >= 10) saveCustomer(customerPhone, { ...tempOrder, firebaseDocId });
         if (appliedPromo) {
@@ -1189,7 +1145,7 @@ export default function CafePOS() {
         setSyncStatus('connected');
         // Background tasks
         kotNumPromise.then(kotNum => {
-          updateDoc(doc(db, 'orders', firebaseDocId), { kotNumber: kotNum }).catch(() => {});
+          apiWrite('update', 'orders/' + firebaseDocId, { kotNumber: kotNum }).catch(() => {});
         });
         if (appliedPromo) {
           const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
@@ -1347,6 +1303,67 @@ export default function CafePOS() {
     win.document.close();
   };
 
+  const printKOT = (order) => {
+    const items = order.items || [];
+    const kotNum = order.kotNumber || '—';
+    const tableLabel = !order.tableNumber ? '' : order.tableNumber === 'T/A' ? 'TAKEAWAY' : `TABLE ${order.tableNumber}`;
+    const now = new Date(order.timestamp || Date.now());
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    const itemsHTML = items.map(i => {
+      const sops = (menuSOPs[i.name] || []);
+      const sopLine = sops.length > 0
+        ? `<div class="sop">${sops.map(r => `${r.ingredient} ${r.quantity * (i.quantity||1)}`).join(' · ')}</div>`
+        : '';
+      return `<div class="item"><div class="qty">×${i.quantity||1}</div><div class="name">${i.name}${sopLine}</div></div>`;
+    }).join('');
+    const kotHTML = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>KOT #${kotNum}</title>
+<style>
+  @page { size: 80mm auto; margin: 2mm 3mm; }
+  body { font-family: 'Courier New', monospace; margin: 0; padding: 0; color: #000; }
+  .top { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
+  .cafe { font-size: 13px; font-weight: bold; letter-spacing: 1px; }
+  .kot-num { font-size: 28px; font-weight: 900; margin: 2px 0; }
+  .meta { font-size: 11px; }
+  .table-tag { font-size: 16px; font-weight: 900; margin: 4px 0; }
+  .item { display: flex; align-items: flex-start; gap: 6px; padding: 5px 0; border-bottom: 1px dashed #999; }
+  .qty { min-width: 28px; font-size: 20px; font-weight: 900; text-align: center; line-height: 1; }
+  .name { font-size: 17px; font-weight: 700; line-height: 1.2; flex: 1; }
+  .sop { font-size: 11px; font-weight: 400; color: #444; margin-top: 2px; }
+  .note { font-size: 12px; font-weight: 700; margin-top: 6px; border: 1px dashed #000; padding: 5px; background: #f9f0d0; }
+  .footer { text-align: center; font-size: 11px; margin-top: 6px; }
+  .no-print { text-align: center; padding: 16px; }
+  @media print { .no-print { display: none; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="cafe">${settings.cafeName}</div>
+  <div class="kot-num">KOT #${kotNum}</div>
+  ${tableLabel ? `<div class="table-tag">${tableLabel}</div>` : ''}
+  ${order.customerName ? `<div class="meta">${order.customerName}</div>` : ''}
+  <div class="meta">${dateStr} &nbsp; ${timeStr}</div>
+</div>
+${itemsHTML}
+${order.specialInstructions ? `<div class="note">📝 ${order.specialInstructions}</div>` : ''}
+<div class="footer">— kitchen copy —</div>
+<div class="no-print">
+  <button onclick="window.print()" style="background:#000;color:#fff;padding:10px 24px;border:none;font-size:14px;font-weight:bold;cursor:pointer;">PRINT KOT</button>
+  <button onclick="window.close()" style="background:#fff;color:#000;padding:10px 20px;border:1px solid #000;font-size:14px;cursor:pointer;margin-left:8px;">CLOSE</button>
+</div>
+</body>
+</html>`;
+    const win = window.open('', '', 'height=600,width=360');
+    if (!win) { alert('❌ Popup blocked! Allow popups for this site to print KOTs.'); return; }
+    win.document.write(kotHTML);
+    win.document.close();
+    setTimeout(() => { try { win.print(); } catch(e) {} }, 400);
+  };
+
   const sendWhatsApp = () => {
     if (currentOrder.length === 0) { alert('No items'); return; }
     const text = `*${settings.cafeName}*\n\n*Order:*\n${currentOrder.map(i => `• ${i.name} x${i.quantity} - ₹${i.price * i.quantity}`).join('\n')}\n\n*Total:* ₹${total.toFixed(0)}`;
@@ -1393,7 +1410,7 @@ export default function CafePOS() {
     const order = orders.find(o => o.id === orderId);
     if (order?.firebaseDocId) {
       try {
-        await updateDoc(doc(db, "orders", order.firebaseDocId), {
+        await apiWrite('update', 'orders/' + order.firebaseDocId, {
           status,
           ...(status === 'ready' ? { readyTime: Date.now() } : {})
         });
@@ -1411,7 +1428,7 @@ export default function CafePOS() {
     const order = orders.find(o => o.id === orderId);
     if (order?.firebaseDocId) {
       try {
-        await updateDoc(doc(db, "orders", order.firebaseDocId), { paymentStatus: 'paid', paymentTime: new Date().toISOString() });
+        await apiWrite('update', 'orders/' + order.firebaseDocId, { paymentStatus: 'paid', paymentTime: new Date().toISOString() });
       } catch (e) { console.error('Payment update failed:', e); }
     }
   };
@@ -1756,7 +1773,7 @@ export default function CafePOS() {
               if (editingOrderItems.length === 0) {
                 await deleteOrderFromFirebase(order.firebaseDocId);
               } else {
-                await updateDoc(doc(db, "orders", order.firebaseDocId), { items: editingOrderItems, subtotal: newTotal, total: newTotal });
+                await apiWrite('update', 'orders/' + order.firebaseDocId, { items: editingOrderItems, subtotal: newTotal, total: newTotal });
               }
               alert('✅ Order updated!');
             } catch (e) { alert('❌ Update failed'); }
@@ -2631,10 +2648,14 @@ export default function CafePOS() {
                             style={{ padding: '9px 14px', background: 'rgba(252,128,25,0.15)', color: '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
                             👁 Bill
                           </button>
+                          <button onClick={() => printKOT(order)}
+                            style={{ padding: '9px 14px', background: 'rgba(105,240,174,0.12)', color: '#69F0AE', border: '1.5px solid #69F0AE', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
+                            🖨️ KOT
+                          </button>
                           {!isPaid && (
                             <button onClick={async () => {
                               if (order.firebaseDocId) {
-                                await updateDoc(doc(db, 'orders', order.firebaseDocId), { paymentStatus: 'paid', status: 'delivered', paymentTime: new Date().toISOString() });
+                                await apiWrite('update', 'orders/' + order.firebaseDocId, { paymentStatus: 'paid', status: 'delivered', paymentTime: new Date().toISOString() });
                                 if (order.tableNumber && order.tableNumber !== 'T/A') {
                                   const updated = { ...tableStatus, [order.tableNumber]: 'available' };
                                   setTableStatus(updated);
@@ -2754,7 +2775,7 @@ export default function CafePOS() {
                                     <button onClick={async () => {
                                       if (order.firebaseDocId) {
                                         try {
-                                          await updateDoc(doc(db, 'orders', order.firebaseDocId), { paymentStatus: 'paid', paymentMethod: chosenMethod, status: 'delivered', paymentTime: new Date().toISOString() });
+                                          await apiWrite('update', 'orders/' + order.firebaseDocId, { paymentStatus: 'paid', paymentMethod: chosenMethod, status: 'delivered', paymentTime: new Date().toISOString() });
                                           if (order.tableNumber && order.tableNumber !== 'T/A') {
                                             const updated = { ...tableStatus, [order.tableNumber]: 'available' };
                                             setTableStatus(updated);
@@ -2772,7 +2793,7 @@ export default function CafePOS() {
                                     <button onClick={async () => {
                                       if (order.firebaseDocId) {
                                         try {
-                                          await updateDoc(doc(db, 'orders', order.firebaseDocId), { paymentStatus: 'paid', paymentMethod: chosenMethod, paymentTime: new Date().toISOString() });
+                                          await apiWrite('update', 'orders/' + order.firebaseDocId, { paymentStatus: 'paid', paymentMethod: chosenMethod, paymentTime: new Date().toISOString() });
                                           setBillsPayMethod(p => { const n = { ...p }; delete n[order.id]; return n; });
                                         } catch(e) { alert('❌ Failed to update. Check internet.'); }
                                       }
@@ -4508,6 +4529,15 @@ export default function CafePOS() {
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                   <input type="checkbox" checked={settings.preventNegativeStock} onChange={(e) => updateSettings({ ...settings, preventNegativeStock: e.target.checked })} style={{ width: '18px', height: '18px' }} />
                   <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>🔒 Block orders if insufficient stock</span>
+                </label>
+              </div>
+              <div style={{ padding: '12px', background: 'rgba(105,240,174,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(105,240,174,0.25)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={settings.autoPrintKOT || false} onChange={(e) => updateSettings({ ...settings, autoPrintKOT: e.target.checked })} style={{ width: '18px', height: '18px' }} />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>🖨️ Auto-print KOT on new order</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>Automatically opens print dialog on the kitchen device when a new order arrives. Allow popups first.</div>
+                  </div>
                 </label>
               </div>
               <div style={{ padding: '12px', background: 'rgba(230,74,25,0.15)', borderRadius: '8px', fontSize: '12px', color: '#FC8019', marginTop: '12px', border: '1px solid rgba(230,74,25,0.3)' }}>🔒 Admin features are password protected</div>
