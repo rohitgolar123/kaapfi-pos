@@ -1341,212 +1341,103 @@ export default function CafePOS() {
   const downloadSingleBill = (order) => downloadCSV([order], `kaapfi-bill-${order.id}.csv`);
   const downloadTodayAll = () => { if (todayOrders.length === 0) { alert('No orders today'); return; } downloadCSV(todayOrders, `kaapfi-today.csv`); };
 
-  const printBill = async () => {
+  // ── Hidden iframe print — works on phones, no popup needed ──────────────
+  const printWithIframe = (html) => {
+    const old = document.getElementById('kpf');
+    if (old) old.remove();
+    const f = document.createElement('iframe');
+    f.id = 'kpf';
+    f.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
+    document.body.appendChild(f);
+    const doc = f.contentDocument || f.contentWindow.document;
+    doc.open(); doc.write(html); doc.close();
+    setTimeout(() => {
+      try { f.contentWindow.focus(); f.contentWindow.print(); } catch(e) {}
+      setTimeout(() => { if (f.parentNode) f.parentNode.removeChild(f); }, 4000);
+    }, 600);
+  };
+
+  const PRINT_CSS = `
+    @page { size: 80mm auto; margin: 1mm 2mm; }
+    html, body { margin: 0; padding: 0; width: 76mm; font-family: 'Courier New', monospace; color: #000; }
+  `;
+
+  const printBill = () => {
     if (currentOrder.length === 0) { alert('No items'); return; }
     const now = new Date();
     const billNo = `K90-${now.getFullYear().toString().slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(todayOrders.length + 1).padStart(3,'0')}`;
-
-    // ── Direct ESC/POS bill print ───────────────────────────────────────
-    if (btConnected || printerConnected) {
-      const lines = [
-        { align: 'center', bold: true, size: 1.5, text: settings.cafeName },
-        { align: 'center', text: settings.address },
-        { align: 'center', text: settings.phone },
-        { divider: true },
-        { align: 'left', text: `Bill: ${billNo}` },
-        { align: 'left', text: `Date: ${now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}  ${now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true})}` },
-        ...(customerName ? [{ align: 'left', text: `Customer: ${customerName}` }] : []),
-        { divider: true },
-      ];
-      for (const i of currentOrder) {
-        const amt = `Rs${(i.price*i.quantity).toFixed(0)}`;
-        const label = `${i.quantity}x ${i.name}`;
-        const spaces = Math.max(1, 32 - label.length - amt.length);
-        lines.push({ align: 'left', text: label + ' '.repeat(spaces) + amt });
-      }
-      lines.push({ divider: true });
-      if (totalDiscount > 0) lines.push({ align: 'left', text: `Discount: -Rs${totalDiscount.toFixed(0)}` });
-      if (tax > 0) lines.push({ align: 'left', text: `Tax: Rs${tax.toFixed(0)}` });
-      lines.push({ align: 'left', bold: true, size: 1.5, text: `TOTAL  Rs${total.toFixed(0)}` });
-      lines.push({ align: 'left', text: `Payment: ${paymentMethod.toUpperCase()}` });
-      lines.push({ divider: true });
-      lines.push({ align: 'center', text: settings.tagline });
-      lines.push({ align: 'center', text: 'Thank you, come again!' });
-      const ok = await sendToAnyPrinter(buildEscpos(lines));
-      if (ok) return;
-    }
-
     const itemsHTML = currentOrder.map(i =>
-      `<tr><td style="padding:4px 0;">${i.quantity}</td><td style="padding:4px 0;">${i.name}</td><td style="padding:4px 0;text-align:right;">${i.price}</td><td style="padding:4px 0;text-align:right;">${i.price * i.quantity}</td></tr>`
+      `<tr><td style="padding:3px 0;">${i.quantity}</td><td style="padding:3px 0;">${i.name}</td><td style="padding:3px 0;text-align:right;">₹${i.price}</td><td style="padding:3px 0;text-align:right;">₹${i.price * i.quantity}</td></tr>`
     ).join('');
     const totalItems = currentOrder.reduce((sum, i) => sum + i.quantity, 0);
-    
-    const receiptHTML = `
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Receipt</title>
-<style>
-  @page { size: 80mm auto; margin: 1mm 2mm; }
-  html, body { margin: 0; padding: 0; width: 76mm; }
-  body { font-family: 'Courier New', monospace; color: #000; font-size: 12px; }
-  .receipt { width: 100%; }
-  .header { text-align: center; padding: 6px 0 4px; }
-  .header h1 { font-family: Georgia, serif; font-size: 22px; margin: 0; font-weight: bold; letter-spacing: 1px; }
-  .estd { font-size: 10px; letter-spacing: 3px; margin-top: 2px; }
-  .address { text-align: center; font-size: 10px; padding: 4px 0; border-bottom: 1px dashed #000; }
-  .info { padding: 4px 0; border-bottom: 1px dashed #000; font-size: 10px; }
-  .info-row { display: flex; justify-content: space-between; padding: 1px 0; }
-  table { width: 100%; border-collapse: collapse; font-size: 10px; }
-  .header-row { border-bottom: 1px dashed #000; }
-  .header-row td { padding: 4px 0; font-weight: bold; }
-  .subtotal-row { border-top: 1px dashed #000; padding-top: 4px; }
-  .total-row { border-top: 2px solid #000; padding: 5px 0; font-size: 14px; font-weight: bold; }
-  .footer { text-align: center; padding: 6px 0 4px; border-top: 1px dashed #000; font-size: 10px; }
-  .footer h2 { font-family: Georgia, serif; font-size: 12px; margin: 2px 0; font-weight: normal; font-style: italic; }
-  .footer .hindi { font-family: Arial, sans-serif; font-size: 12px; margin: 2px 0; }
-  .payment { text-align: center; padding: 3px 0; font-size: 10px; }
-</style>
-</head>
-<body>
-<div class="receipt">
-  <div class="header">
-    <h1>${settings.cafeName}</h1>
-    <div class="estd">ESTD · 2025</div>
-  </div>
-  <div class="address">
-    ${settings.address}<br>
-    ${settings.phone}
-  </div>
-  <div class="info">
-    <div class="info-row"><span>Bill No:</span><span>${billNo}</span></div>
-    <div class="info-row"><span>Date:</span><span>${now.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'})}</span></div>
-    <div class="info-row"><span>Time:</span><span>${now.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', hour12:true})}</span></div>
-    ${customerName ? `<div class="info-row"><span>Customer:</span><span>${customerName}</span></div>` : ''}
-    ${customerPhone ? `<div class="info-row"><span>Phone:</span><span>${customerPhone}</span></div>` : ''}
-  </div>
-  <table>
-    <tr class="header-row">
-      <td>Qt</td><td>Item</td><td style="text-align:right;">Rate</td><td style="text-align:right;">Amt</td>
-    </tr>
-    ${itemsHTML}
-  </table>
-  <div class="subtotal-row">
-    <div class="info-row"><span>Items: ${totalItems}</span><span>Subtotal: ${subtotal}</span></div>
-    ${totalDiscount > 0 ? `<div class="info-row"><span>Discount:</span><span>-₹${totalDiscount.toFixed(0)}</span></div>` : ''}
-    ${tax > 0 ? `<div class="info-row"><span>Tax:</span><span>₹${tax.toFixed(0)}</span></div>` : ''}
-  </div>
-  <div class="total-row">
-    <div class="info-row"><span>TOTAL</span><span>₹${total.toFixed(0)}</span></div>
-  </div>
-  <div class="payment">Payment: ${paymentMethod.toUpperCase()}</div>
-  <div class="footer">
-    <h2>${settings.tagline}</h2>
-    <div class="hindi">जो है, काफी है।</div>
-    <div style="margin-top:8px;">Thank you, come again!</div>
-    <div style="margin-top:4px;">IG: @kaapfi90s</div>
-  </div>
-</div>
-<script>
-  window.onload = function() {
-    var h = document.body.scrollHeight + 20;
-    window.resizeTo(360, Math.min(h, 900));
-    window.onafterprint = function() { window.close(); };
-    setTimeout(function() { window.focus(); window.print(); }, 350);
-  };
-</script>
-</body>
-</html>`;
-    const win = window.open('', '', 'height=500,width=360');
-    if (!win) { alert('❌ Popup blocked! Allow popups for this site.\n\nIn Chrome: tap the popup icon in the address bar → "Always allow popups from build-brown-gamma.vercel.app"'); return; }
-    win.document.write(receiptHTML);
-    win.document.close();
+    printWithIframe(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+      ${PRINT_CSS}
+      body { font-size: 11px; }
+      .hdr { text-align:center; padding:5px 0 3px; border-bottom:1px dashed #000; }
+      .hdr h1 { font-family:Georgia,serif; font-size:20px; margin:0; font-weight:bold; }
+      .hdr p { font-size:9px; margin:2px 0 0; }
+      .info { font-size:10px; padding:3px 0; border-bottom:1px dashed #000; }
+      .row { display:flex; justify-content:space-between; padding:1px 0; }
+      table { width:100%; border-collapse:collapse; font-size:10px; margin:2px 0; }
+      .th td { border-bottom:1px dashed #000; padding:3px 0; font-weight:bold; }
+      .sub { border-top:1px dashed #000; padding-top:3px; font-size:10px; }
+      .tot { border-top:2px solid #000; padding:4px 0; font-size:13px; font-weight:bold; }
+      .ftr { text-align:center; border-top:1px dashed #000; padding:4px 0 2px; font-size:10px; }
+    </style></head><body>
+    <div class="hdr"><h1>${settings.cafeName}</h1><p>${settings.address} · ${settings.phone}</p></div>
+    <div class="info">
+      <div class="row"><span>Bill No:</span><span>${billNo}</span></div>
+      <div class="row"><span>Date:</span><span>${now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span></div>
+      <div class="row"><span>Time:</span><span>${now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true})}</span></div>
+      ${customerName ? `<div class="row"><span>Customer:</span><span>${customerName}</span></div>` : ''}
+      ${customerPhone ? `<div class="row"><span>Phone:</span><span>${customerPhone}</span></div>` : ''}
+    </div>
+    <table><tr class="th"><td>Qt</td><td>Item</td><td style="text-align:right">Rate</td><td style="text-align:right">Amt</td></tr>${itemsHTML}</table>
+    <div class="sub">
+      <div class="row"><span>Items: ${totalItems}</span><span>Subtotal: ₹${subtotal}</span></div>
+      ${totalDiscount > 0 ? `<div class="row"><span>Discount:</span><span>-₹${totalDiscount.toFixed(0)}</span></div>` : ''}
+      ${tax > 0 ? `<div class="row"><span>Tax:</span><span>₹${tax.toFixed(0)}</span></div>` : ''}
+    </div>
+    <div class="tot"><div class="row"><span>TOTAL</span><span>₹${total.toFixed(0)}</span></div></div>
+    <div style="text-align:center;font-size:10px;padding:2px 0;">Payment: ${paymentMethod.toUpperCase()}</div>
+    <div class="ftr"><i>${settings.tagline}</i><br>जो है, काफी है।<br>Thank you, come again! · IG: @kaapfi90s</div>
+    </body></html>`);
   };
 
-  const printKOT = async (order) => {
+  const printKOT = (order) => {
     const items = order.items || [];
     const kotNum = order.kotNumber || '—';
     const tableLabel = !order.tableNumber ? '' : order.tableNumber === 'T/A' ? 'TAKEAWAY' : `TABLE ${order.tableNumber}`;
     const now = new Date(order.timestamp || Date.now());
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-
-    // ── Direct ESC/POS print ────────────────────────────────────────────
-    if (btConnected || printerConnected) {
-      const lines = [
-        { align: 'center', bold: true, text: settings.cafeName },
-        { align: 'center', size: 2, bold: true, text: `KOT #${kotNum}` },
-        ...(tableLabel ? [{ align: 'center', bold: true, size: 1.5, text: tableLabel }] : []),
-        ...(order.customerName ? [{ align: 'center', text: order.customerName }] : []),
-        { align: 'center', text: `${dateStr}  ${timeStr}` },
-        { divider: true },
-      ];
-      for (const item of items) {
-        lines.push({ align: 'left', size: 1.5, bold: true, text: `x${item.quantity||1}  ${item.name}` });
-        const sops = (menuSOPs[item.name] || []);
-        if (sops.length > 0) lines.push({ align: 'left', text: '   ' + sops.map(r=>`${r.ingredient} ${r.quantity*(item.quantity||1)}`).join(' | ') });
-      }
-      lines.push({ divider: true });
-      if (order.specialInstructions) lines.push({ align: 'left', bold: true, text: 'NOTE: ' + order.specialInstructions });
-      lines.push({ align: 'center', text: '-- kitchen copy --' });
-      const ok = await sendToAnyPrinter(buildEscpos(lines));
-      if (ok) return;
-    }
     const itemsHTML = items.map(i => {
       const sops = (menuSOPs[i.name] || []);
       const sopLine = sops.length > 0
-        ? `<div class="sop">${sops.map(r => `${r.ingredient} ${r.quantity * (i.quantity||1)}`).join(' · ')}</div>`
+        ? `<div style="font-size:9px;color:#444;margin-top:1px;">${sops.map(r=>`${r.ingredient} ${r.quantity*(i.quantity||1)}`).join(' · ')}</div>`
         : '';
-      return `<div class="item"><div class="qty">×${i.quantity||1}</div><div class="name">${i.name}${sopLine}</div></div>`;
+      return `<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px dashed #999;">
+        <div style="min-width:26px;font-size:19px;font-weight:900;text-align:center;line-height:1;">×${i.quantity||1}</div>
+        <div style="font-size:16px;font-weight:700;line-height:1.2;flex:1;">${i.name}${sopLine}</div>
+      </div>`;
     }).join('');
-    const kotHTML = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>KOT #${kotNum}</title>
-<style>
-  @page { size: 80mm auto; margin: 1mm 2mm; }
-  html, body { margin: 0; padding: 0; width: 76mm; }
-  body { font-family: 'Courier New', monospace; color: #000; font-size: 12px; }
-  .top { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
-  .cafe { font-size: 12px; font-weight: bold; letter-spacing: 1px; }
-  .kot-num { font-size: 26px; font-weight: 900; margin: 1px 0; line-height: 1.1; }
-  .meta { font-size: 10px; line-height: 1.3; }
-  .table-tag { font-size: 15px; font-weight: 900; margin: 2px 0; }
-  .item { display: flex; align-items: flex-start; gap: 6px; padding: 4px 0; border-bottom: 1px dashed #999; }
-  .qty { min-width: 26px; font-size: 19px; font-weight: 900; text-align: center; line-height: 1; }
-  .name { font-size: 16px; font-weight: 700; line-height: 1.2; flex: 1; }
-  .sop { font-size: 10px; font-weight: 400; color: #444; margin-top: 1px; }
-  .note { font-size: 11px; font-weight: 700; margin-top: 4px; border: 1px dashed #000; padding: 3px 5px; }
-  .footer { text-align: center; font-size: 10px; margin-top: 4px; padding-bottom: 2px; }
-</style>
-</head>
-<body>
-<div class="top">
-  <div class="cafe">${settings.cafeName}</div>
-  <div class="kot-num">KOT #${kotNum}</div>
-  ${tableLabel ? `<div class="table-tag">${tableLabel}</div>` : ''}
-  ${order.customerName ? `<div class="meta">${order.customerName}</div>` : ''}
-  <div class="meta">${dateStr} &nbsp; ${timeStr}</div>
-</div>
-${itemsHTML}
-${order.specialInstructions ? `<div class="note">📝 ${order.specialInstructions}</div>` : ''}
-<div class="footer">— kitchen copy —</div>
-<script>
-  window.onload = function() {
-    var h = document.body.scrollHeight + 20;
-    window.resizeTo(360, Math.min(h, 700));
-    window.onafterprint = function() { window.close(); };
-    setTimeout(function() { window.focus(); window.print(); }, 350);
-  };
-</script>
-</body>
-</html>`;
-    const win = window.open('', '', 'height=400,width=360');
-    if (!win) { alert('❌ Popup blocked! Allow popups for this site to print KOTs.'); return; }
-    win.document.write(kotHTML);
-    win.document.close();
+    printWithIframe(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+      ${PRINT_CSS}
+      body { font-size:12px; }
+      .top { text-align:center; border-bottom:2px dashed #000; padding-bottom:4px; margin-bottom:4px; }
+      .footer { text-align:center; font-size:10px; margin-top:4px; padding-bottom:2px; }
+    </style></head><body>
+    <div class="top">
+      <div style="font-size:12px;font-weight:bold;">${settings.cafeName}</div>
+      <div style="font-size:26px;font-weight:900;margin:1px 0;line-height:1.1;">KOT #${kotNum}</div>
+      ${tableLabel ? `<div style="font-size:15px;font-weight:900;margin:2px 0;">${tableLabel}</div>` : ''}
+      ${order.customerName ? `<div style="font-size:10px;">${order.customerName}</div>` : ''}
+      <div style="font-size:10px;">${dateStr} &nbsp; ${timeStr}</div>
+    </div>
+    ${itemsHTML}
+    ${order.specialInstructions ? `<div style="font-size:11px;font-weight:700;margin-top:4px;border:1px dashed #000;padding:3px 5px;">📝 ${order.specialInstructions}</div>` : ''}
+    <div class="footer">— kitchen copy —</div>
+    </body></html>`);
   };
 
   const sendWhatsApp = () => {
