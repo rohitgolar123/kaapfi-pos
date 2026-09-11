@@ -505,13 +505,78 @@ export default function CafePOS() {
   const lastMenuBackupRef = useRef(null);
   const syncStatusRef = useRef('connected');
 
-  // ── Direct thermal printer (Web Serial / ESC-POS) ───────────────────────
+  // ── Direct thermal printer (USB Serial + Bluetooth / ESC-POS) ─────────────
   const serialPortRef = useRef(null);
   const [printerConnected, setPrinterConnected] = useState(false);
+  const btCharRef = useRef(null);
+  const [btConnected, setBtConnected] = useState(false);
+  const [btDeviceName, setBtDeviceName] = useState('');
+
+  // Common BLE service UUIDs used by 80mm thermal printers
+  const BT_SERVICES = [
+    '000018f0-0000-1000-8000-00805f9b34fb', // generic thermal
+    'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // common Chinese 80mm printers
+    '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART (NUS)
+    '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Microchip RN42
+    '0000ff00-0000-1000-8000-00805f9b34fb', // generic ff00
+    '000000ff-0000-1000-8000-00805f9b34fb', // alternative
+  ];
+
+  const connectBluetooth = async () => {
+    if (!navigator.bluetooth) {
+      alert('Bluetooth printing needs Chrome on Android or desktop.\n(Enable chrome://flags/#enable-experimental-web-platform-features on older Chrome)');
+      return;
+    }
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: BT_SERVICES,
+      });
+      const server = await device.gatt.connect();
+      // Find the first writable characteristic across all services
+      let writeChar = null;
+      const services = await server.getPrimaryServices();
+      for (const svc of services) {
+        try {
+          const chars = await svc.getCharacteristics();
+          for (const c of chars) {
+            if (c.properties.write || c.properties.writeWithoutResponse) {
+              writeChar = c; break;
+            }
+          }
+        } catch(e) {}
+        if (writeChar) break;
+      }
+      if (!writeChar) { alert('Could not find a writable port on this printer.\nMake sure it is a Bluetooth thermal printer.'); return; }
+      btCharRef.current = writeChar;
+      setBtConnected(true);
+      setBtDeviceName(device.name || 'Bluetooth Printer');
+      device.addEventListener('gattserverdisconnected', () => {
+        btCharRef.current = null; setBtConnected(false); setBtDeviceName('');
+      });
+    } catch(e) {
+      if (e.name !== 'NotFoundError') alert('Bluetooth error: ' + e.message);
+    }
+  };
+
+  const sendViaBluetooth = async (bytes) => {
+    const char = btCharRef.current;
+    if (!char) return false;
+    try {
+      const CHUNK = 100; // safe BLE chunk size for all printers
+      for (let i = 0; i < bytes.length; i += CHUNK) {
+        const chunk = bytes.slice(i, i + CHUNK);
+        if (char.properties.writeWithoutResponse) await char.writeValueWithoutResponse(chunk);
+        else await char.writeValue(chunk);
+        if (i + CHUNK < bytes.length) await new Promise(r => setTimeout(r, 30));
+      }
+      return true;
+    } catch(e) { btCharRef.current = null; setBtConnected(false); return false; }
+  };
 
   const connectPrinter = async () => {
     if (!navigator.serial) {
-      alert('Direct USB printing requires Chrome on desktop (not mobile).\n\nFor mobile: in the print popup, change Destination from "Save as PDF" to your thermal printer once — Chrome will remember it.');
+      alert('Direct USB printing requires Chrome on desktop.\n\nFor mobile phones, use the Bluetooth option above.');
       return;
     }
     try {
@@ -533,6 +598,12 @@ export default function CafePOS() {
       writer.releaseLock();
       return true;
     } catch(e) { return false; }
+  };
+
+  const sendToAnyPrinter = async (bytes) => {
+    if (btConnected) return await sendViaBluetooth(bytes);
+    if (printerConnected) return await sendToPrinter(bytes);
+    return false;
   };
 
   const buildEscpos = (lines) => {
@@ -1276,7 +1347,7 @@ export default function CafePOS() {
     const billNo = `K90-${now.getFullYear().toString().slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(todayOrders.length + 1).padStart(3,'0')}`;
 
     // ── Direct ESC/POS bill print ───────────────────────────────────────
-    if (serialPortRef.current) {
+    if (btConnected || printerConnected) {
       const lines = [
         { align: 'center', bold: true, size: 1.5, text: settings.cafeName },
         { align: 'center', text: settings.address },
@@ -1301,7 +1372,7 @@ export default function CafePOS() {
       lines.push({ divider: true });
       lines.push({ align: 'center', text: settings.tagline });
       lines.push({ align: 'center', text: 'Thank you, come again!' });
-      const ok = await sendToPrinter(buildEscpos(lines));
+      const ok = await sendToAnyPrinter(buildEscpos(lines));
       if (ok) return;
     }
 
@@ -1402,7 +1473,7 @@ export default function CafePOS() {
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 
     // ── Direct ESC/POS print ────────────────────────────────────────────
-    if (serialPortRef.current) {
+    if (btConnected || printerConnected) {
       const lines = [
         { align: 'center', bold: true, text: settings.cafeName },
         { align: 'center', size: 2, bold: true, text: `KOT #${kotNum}` },
@@ -1419,7 +1490,7 @@ export default function CafePOS() {
       lines.push({ divider: true });
       if (order.specialInstructions) lines.push({ align: 'left', bold: true, text: 'NOTE: ' + order.specialInstructions });
       lines.push({ align: 'center', text: '-- kitchen copy --' });
-      const ok = await sendToPrinter(buildEscpos(lines));
+      const ok = await sendToAnyPrinter(buildEscpos(lines));
       if (ok) return;
     }
     const itemsHTML = items.map(i => {
@@ -4655,12 +4726,38 @@ ${order.specialInstructions ? `<div class="note">📝 ${order.specialInstruction
                 </label>
               </div>
               <div style={{ padding: '14px', background: 'rgba(33,150,243,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(33,150,243,0.3)' }}>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '6px' }}>🔌 Direct USB Thermal Printer</div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '10px' }}>Connect once — all KOT and bill prints go straight to the printer with no dialog and auto paper cut. Requires Chrome on desktop + USB cable to printer.</div>
-                <button onClick={connectPrinter} style={{ padding: '9px 18px', background: printerConnected ? '#1B5E20' : '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}>
-                  {printerConnected ? '✅ Printer Connected' : '🔌 Connect USB Printer'}
-                </button>
-                {printerConnected && <button onClick={() => { serialPortRef.current = null; setPrinterConnected(false); }} style={{ marginLeft: '8px', padding: '9px 14px', background: 'transparent', color: '#ef9a9a', border: '1px solid #ef9a9a', borderRadius: '8px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>Disconnect</button>}
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '4px' }}>🖨️ Connect Thermal Printer</div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '10px' }}>Connect once — KOT and bill print directly with no dialog and auto paper cut.</div>
+
+                {/* Bluetooth */}
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#90CAF9', marginBottom: '6px' }}>📱 Bluetooth (for phones & tablets)</div>
+                  {btConnected ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '800', color: '#69F0AE' }}>✅ {btDeviceName}</span>
+                      <button onClick={() => { btCharRef.current = null; setBtConnected(false); setBtDeviceName(''); }} style={{ padding: '5px 12px', background: 'transparent', color: '#ef9a9a', border: '1px solid #ef9a9a', borderRadius: '6px', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>Disconnect</button>
+                    </div>
+                  ) : (
+                    <button onClick={connectBluetooth} style={{ padding: '9px 18px', background: '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%' }}>
+                      🔵 Scan & Connect Bluetooth Printer
+                    </button>
+                  )}
+                </div>
+
+                {/* USB */}
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '10px' }}>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: '#90CAF9', marginBottom: '6px' }}>💻 USB Cable (for laptops / desktop)</div>
+                  {printerConnected ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '800', color: '#69F0AE' }}>✅ USB Printer Connected</span>
+                      <button onClick={() => { serialPortRef.current = null; setPrinterConnected(false); }} style={{ padding: '5px 12px', background: 'transparent', color: '#ef9a9a', border: '1px solid #ef9a9a', borderRadius: '6px', fontWeight: '700', fontSize: '11px', cursor: 'pointer' }}>Disconnect</button>
+                    </div>
+                  ) : (
+                    <button onClick={connectPrinter} style={{ padding: '9px 18px', background: '#37474F', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '13px', cursor: 'pointer', width: '100%' }}>
+                      🔌 Connect USB Printer
+                    </button>
+                  )}
+                </div>
               </div>
               <div style={{ padding: '12px', background: 'rgba(230,74,25,0.15)', borderRadius: '8px', fontSize: '12px', color: '#FC8019', marginTop: '12px', border: '1px solid rgba(230,74,25,0.3)' }}>🔒 Admin features are password protected</div>
             </div>
