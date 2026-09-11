@@ -505,6 +505,61 @@ export default function CafePOS() {
   const lastMenuBackupRef = useRef(null);
   const syncStatusRef = useRef('connected');
 
+  // ── Direct thermal printer (Web Serial / ESC-POS) ───────────────────────
+  const serialPortRef = useRef(null);
+  const [printerConnected, setPrinterConnected] = useState(false);
+
+  const connectPrinter = async () => {
+    if (!navigator.serial) {
+      alert('Direct USB printing requires Chrome on desktop (not mobile).\n\nFor mobile: in the print popup, change Destination from "Save as PDF" to your thermal printer once — Chrome will remember it.');
+      return;
+    }
+    try {
+      const port = await navigator.serial.requestPort();
+      await port.open({ baudRate: 9600 });
+      serialPortRef.current = port;
+      setPrinterConnected(true);
+    } catch(e) {
+      if (e.name !== 'NotFoundError') alert('Printer connection failed: ' + e.message);
+    }
+  };
+
+  const sendToPrinter = async (bytes) => {
+    const port = serialPortRef.current;
+    if (!port || !port.writable) return false;
+    try {
+      const writer = port.writable.getWriter();
+      await writer.write(bytes);
+      writer.releaseLock();
+      return true;
+    } catch(e) { return false; }
+  };
+
+  const buildEscpos = (lines) => {
+    // lines: array of { type: 'init'|'text'|'bold'|'cut'|'feed', text?, size? }
+    const ESC = 0x1B, GS = 0x1D, LF = 0x0A;
+    const bytes = [];
+    const txt = (s) => { for (let i=0;i<s.length;i++) bytes.push(s.charCodeAt(i) & 0xff); };
+    bytes.push(ESC, 0x40); // init
+    bytes.push(ESC, 0x74, 0x00); // CP437 code page
+    for (const l of lines) {
+      if (l.align === 'center') bytes.push(ESC, 0x61, 0x01);
+      else bytes.push(ESC, 0x61, 0x00);
+      if (l.bold) bytes.push(ESC, 0x45, 0x01);
+      const sz = l.size || 1;
+      if (sz === 2) bytes.push(ESC, 0x21, 0x30); // double w+h
+      else if (sz === 1.5) bytes.push(ESC, 0x21, 0x10); // double h only
+      else bytes.push(ESC, 0x21, 0x00); // normal
+      if (l.divider) { for (let i=0;i<32;i++) bytes.push(0x2D); bytes.push(LF); continue; }
+      if (l.text != null) { txt(String(l.text).replace(/₹/g,'Rs').replace(/[^\x00-\x7F]/g,'?')); bytes.push(LF); }
+      if (l.bold) bytes.push(ESC, 0x45, 0x00);
+      bytes.push(ESC, 0x21, 0x00);
+    }
+    bytes.push(LF, LF);
+    bytes.push(GS, 0x56, 0x42, 0x05); // partial cut + 5mm feed
+    return new Uint8Array(bytes);
+  };
+
   // LOGIN CHECK
   useEffect(() => {
     const loggedIn = localStorage.getItem('kaapfi_loggedIn');
@@ -1215,11 +1270,42 @@ export default function CafePOS() {
   const downloadSingleBill = (order) => downloadCSV([order], `kaapfi-bill-${order.id}.csv`);
   const downloadTodayAll = () => { if (todayOrders.length === 0) { alert('No orders today'); return; } downloadCSV(todayOrders, `kaapfi-today.csv`); };
 
-  const printBill = () => {
+  const printBill = async () => {
     if (currentOrder.length === 0) { alert('No items'); return; }
     const now = new Date();
     const billNo = `K90-${now.getFullYear().toString().slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(todayOrders.length + 1).padStart(3,'0')}`;
-    const itemsHTML = currentOrder.map(i => 
+
+    // ── Direct ESC/POS bill print ───────────────────────────────────────
+    if (serialPortRef.current) {
+      const lines = [
+        { align: 'center', bold: true, size: 1.5, text: settings.cafeName },
+        { align: 'center', text: settings.address },
+        { align: 'center', text: settings.phone },
+        { divider: true },
+        { align: 'left', text: `Bill: ${billNo}` },
+        { align: 'left', text: `Date: ${now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}  ${now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true})}` },
+        ...(customerName ? [{ align: 'left', text: `Customer: ${customerName}` }] : []),
+        { divider: true },
+      ];
+      for (const i of currentOrder) {
+        const amt = `Rs${(i.price*i.quantity).toFixed(0)}`;
+        const label = `${i.quantity}x ${i.name}`;
+        const spaces = Math.max(1, 32 - label.length - amt.length);
+        lines.push({ align: 'left', text: label + ' '.repeat(spaces) + amt });
+      }
+      lines.push({ divider: true });
+      if (totalDiscount > 0) lines.push({ align: 'left', text: `Discount: -Rs${totalDiscount.toFixed(0)}` });
+      if (tax > 0) lines.push({ align: 'left', text: `Tax: Rs${tax.toFixed(0)}` });
+      lines.push({ align: 'left', bold: true, size: 1.5, text: `TOTAL  Rs${total.toFixed(0)}` });
+      lines.push({ align: 'left', text: `Payment: ${paymentMethod.toUpperCase()}` });
+      lines.push({ divider: true });
+      lines.push({ align: 'center', text: settings.tagline });
+      lines.push({ align: 'center', text: 'Thank you, come again!' });
+      const ok = await sendToPrinter(buildEscpos(lines));
+      if (ok) return;
+    }
+
+    const itemsHTML = currentOrder.map(i =>
       `<tr><td style="padding:4px 0;">${i.quantity}</td><td style="padding:4px 0;">${i.name}</td><td style="padding:4px 0;text-align:right;">${i.price}</td><td style="padding:4px 0;text-align:right;">${i.price * i.quantity}</td></tr>`
     ).join('');
     const totalItems = currentOrder.reduce((sum, i) => sum + i.quantity, 0);
@@ -1307,13 +1393,35 @@ export default function CafePOS() {
     win.document.close();
   };
 
-  const printKOT = (order) => {
+  const printKOT = async (order) => {
     const items = order.items || [];
     const kotNum = order.kotNumber || '—';
     const tableLabel = !order.tableNumber ? '' : order.tableNumber === 'T/A' ? 'TAKEAWAY' : `TABLE ${order.tableNumber}`;
     const now = new Date(order.timestamp || Date.now());
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    // ── Direct ESC/POS print ────────────────────────────────────────────
+    if (serialPortRef.current) {
+      const lines = [
+        { align: 'center', bold: true, text: settings.cafeName },
+        { align: 'center', size: 2, bold: true, text: `KOT #${kotNum}` },
+        ...(tableLabel ? [{ align: 'center', bold: true, size: 1.5, text: tableLabel }] : []),
+        ...(order.customerName ? [{ align: 'center', text: order.customerName }] : []),
+        { align: 'center', text: `${dateStr}  ${timeStr}` },
+        { divider: true },
+      ];
+      for (const item of items) {
+        lines.push({ align: 'left', size: 1.5, bold: true, text: `x${item.quantity||1}  ${item.name}` });
+        const sops = (menuSOPs[item.name] || []);
+        if (sops.length > 0) lines.push({ align: 'left', text: '   ' + sops.map(r=>`${r.ingredient} ${r.quantity*(item.quantity||1)}`).join(' | ') });
+      }
+      lines.push({ divider: true });
+      if (order.specialInstructions) lines.push({ align: 'left', bold: true, text: 'NOTE: ' + order.specialInstructions });
+      lines.push({ align: 'center', text: '-- kitchen copy --' });
+      const ok = await sendToPrinter(buildEscpos(lines));
+      if (ok) return;
+    }
     const itemsHTML = items.map(i => {
       const sops = (menuSOPs[i.name] || []);
       const sopLine = sops.length > 0
@@ -4545,6 +4653,14 @@ ${order.specialInstructions ? `<div class="note">📝 ${order.specialInstruction
                     <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>Automatically opens print dialog on the kitchen device when a new order arrives. Allow popups first.</div>
                   </div>
                 </label>
+              </div>
+              <div style={{ padding: '14px', background: 'rgba(33,150,243,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(33,150,243,0.3)' }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '6px' }}>🔌 Direct USB Thermal Printer</div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginBottom: '10px' }}>Connect once — all KOT and bill prints go straight to the printer with no dialog and auto paper cut. Requires Chrome on desktop + USB cable to printer.</div>
+                <button onClick={connectPrinter} style={{ padding: '9px 18px', background: printerConnected ? '#1B5E20' : '#1565C0', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}>
+                  {printerConnected ? '✅ Printer Connected' : '🔌 Connect USB Printer'}
+                </button>
+                {printerConnected && <button onClick={() => { serialPortRef.current = null; setPrinterConnected(false); }} style={{ marginLeft: '8px', padding: '9px 14px', background: 'transparent', color: '#ef9a9a', border: '1px solid #ef9a9a', borderRadius: '8px', fontWeight: '700', fontSize: '12px', cursor: 'pointer' }}>Disconnect</button>}
               </div>
               <div style={{ padding: '12px', background: 'rgba(230,74,25,0.15)', borderRadius: '8px', fontSize: '12px', color: '#FC8019', marginTop: '12px', border: '1px solid rgba(230,74,25,0.3)' }}>🔒 Admin features are password protected</div>
             </div>
