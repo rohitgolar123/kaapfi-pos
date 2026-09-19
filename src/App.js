@@ -36,9 +36,9 @@ const defaultSettings = {
   preventNegativeStock: false,
   autoPrintKOT: false,
   autoPrintBill: false,
-  tableCount: 10,
+  tableCount: 4,
   staffPin: '1234',
-  tableNames: {},
+  tableNames: { 1: 'T1R', 2: 'T2R', 3: 'T1L', 4: 'T2L' },
   takeawayLabel: 'Takeaway',
 };
 
@@ -2345,20 +2345,15 @@ function CafePOS() {
                 </div>
               )}
 
-              {/* TABLE STATUS ROW */}
-              <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              {/* TABLE STATUS GRID */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
                 {tableNumbers.map(t => {
                   const occupied = tableStatus[t] === 'occupied';
                   const isSelected = selectedTable === t;
                   return (
                     <div key={t} onClick={() => {
                       if (isSelected) { setSelectedTable(null); setCurrentOrder([]); }
-                      else {
-                        setSelectedTable(t);
-                        // Do NOT pre-load existing items — waiter adds only new items.
-                        // Existing order is shown in the "Current Bill" reference panel below.
-                        setCurrentOrder([]);
-                      }
+                      else { setSelectedTable(t); setCurrentOrder([]); }
                     }}
                       style={{ flex: '1', minWidth: '90px', background: isSelected ? '#FC8019' : occupied ? '#1a0a00' : '#0d1f0d', border: `2px solid ${isSelected ? '#fff' : occupied ? '#FC8019' : '#4CAF50'}`, borderRadius: '12px', padding: '12px 8px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', position: 'relative' }}>
                       <div style={{ fontSize: '22px', marginBottom: '4px' }}>{isSelected ? '✅' : occupied ? '🔴' : '🟢'}</div>
@@ -2384,14 +2379,17 @@ function CafePOS() {
                     </div>
                   );
                 })}
+              </div>
+              {/* TAKEAWAY + WAITING ROW */}
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
                 <div onClick={() => setSelectedTable(selectedTable === 'T/A' ? null : 'T/A')}
-                  style={{ flex: '1', minWidth: '80px', background: selectedTable === 'T/A' ? '#FC8019' : 'rgba(33,150,243,0.12)', border: `2px solid ${selectedTable === 'T/A' ? '#E64A19' : '#2196F3'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}>
+                  style={{ flex: '1', background: selectedTable === 'T/A' ? '#FC8019' : 'rgba(33,150,243,0.12)', border: `2px solid ${selectedTable === 'T/A' ? '#E64A19' : '#2196F3'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}>
                   <div style={{ fontSize: '18px' }}>{selectedTable === 'T/A' ? '✅' : '📦'}</div>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>{tName('T/A')}</div>
                   <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'T/A' ? '#fff' : '#90CAF9' }}>{selectedTable === 'T/A' ? 'Selected' : 'Token'}</div>
                 </div>
                 <div onClick={() => setSelectedTable(selectedTable === 'WAIT' ? null : 'WAIT')}
-                  style={{ flex: '1', minWidth: '80px', background: selectedTable === 'WAIT' ? '#9C27B0' : 'rgba(156,39,176,0.12)', border: `2px solid ${selectedTable === 'WAIT' ? '#7B1FA2' : '#CE93D8'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}>
+                  style={{ flex: '1', background: selectedTable === 'WAIT' ? '#9C27B0' : 'rgba(156,39,176,0.12)', border: `2px solid ${selectedTable === 'WAIT' ? '#7B1FA2' : '#CE93D8'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}>
                   <div style={{ fontSize: '18px' }}>{selectedTable === 'WAIT' ? '✅' : '🎫'}</div>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>Waiting</div>
                   <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'WAIT' ? '#fff' : '#CE93D8' }}>{selectedTable === 'WAIT' ? 'Selected' : 'Token'}</div>
