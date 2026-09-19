@@ -169,6 +169,9 @@ async function saveSettingsToCloud(settings) {
 async function saveTableStatusToCloud(tableStatus) {
   try { await apiWrite('set', 'appData/tableStatus', { data: tableStatus, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
+async function saveWaitingQueueToCloud(tokens) {
+  try { await apiWrite('set', 'appData/waitingQueue', { tokens, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+}
 async function saveUpsellItemsToCloud(items) {
   try { await setDoc(doc(db, "appData", "upsellItems"), { items, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
 }
@@ -563,6 +566,7 @@ function CafePOS() {
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [kitchenAlertActive, setKitchenAlertActive] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+  const [waitingQueue, setWaitingQueue] = useState([]); // [{id, tokenNum, name, joinedAt}]
   // ── DataGuard state ──────────────────────────────────────────────────
   const [systemHealth, setSystemHealth] = useState({ status: 'healthy', menuCount: 0, lastCheck: null, lastBackup: null, incidentCount: 0 });
   const [recentIncidents, setRecentIncidents] = useState([]);
@@ -831,6 +835,8 @@ function CafePOS() {
 
         // TABLE STATUS
         if (d.tableStatus?.data) setTableStatus(prev => ({ ...prev, ...d.tableStatus.data }));
+        // WAITING QUEUE
+        if (d.waitingQueue?.tokens) setWaitingQueue(d.waitingQueue.tokens);
 
       } catch (e) { /* keep last known state */ }
     };
@@ -2396,6 +2402,55 @@ function CafePOS() {
                 </div>
               </div>
 
+              {/* ── WAITING QUEUE PANEL ── */}
+              {(() => {
+                const MAX_WAIT = 5;
+                const slots = Array.from({ length: MAX_WAIT }, (_, i) => waitingQueue.find(w => w.tokenNum === i + 1) || null);
+                const addToWaiting = (tokenNum) => {
+                  const name = window.prompt(`Customer name for Token #${tokenNum} (optional)`) ?? '';
+                  if (name === null) return;
+                  const entry = { id: Date.now(), tokenNum, name: name.trim(), joinedAt: new Date().toISOString() };
+                  const next = [...waitingQueue.filter(w => w.tokenNum !== tokenNum), entry];
+                  setWaitingQueue(next); saveWaitingQueueToCloud(next);
+                };
+                const removeFromWaiting = (tokenNum) => {
+                  const next = waitingQueue.filter(w => w.tokenNum !== tokenNum);
+                  setWaitingQueue(next); saveWaitingQueueToCloud(next);
+                };
+                const seatCustomer = (entry) => {
+                  const tableChoice = window.prompt(`Seat Token #${entry.tokenNum}${entry.name ? ' (' + entry.name + ')' : ''} at which table? (Enter table number)`);
+                  if (!tableChoice) return;
+                  removeFromWaiting(entry.tokenNum);
+                  const t = parseInt(tableChoice);
+                  if (t) setSelectedTable(t);
+                };
+                return (
+                  <div style={{ marginBottom: '16px', background: '#0d1f35', border: '1.5px solid rgba(156,39,176,0.4)', borderRadius: '12px', padding: '12px 14px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '900', color: '#CE93D8', marginBottom: '10px' }}>🎫 Waiting Queue</div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {slots.map((entry, i) => {
+                        const tokenNum = i + 1;
+                        const mins = entry ? Math.floor((Date.now() - new Date(entry.joinedAt)) / 60000) : 0;
+                        return entry ? (
+                          <div key={tokenNum} style={{ flex: '1', minWidth: '80px', background: 'rgba(156,39,176,0.15)', border: '1.5px solid #9C27B0', borderRadius: '10px', padding: '8px', textAlign: 'center' }}>
+                            <div style={{ fontSize: '16px', fontWeight: '900', color: '#CE93D8' }}>#{tokenNum}</div>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: '#fff', marginTop: '2px', maxWidth: '80px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name || 'Guest'}</div>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.45)', marginTop: '2px' }}>{mins}m wait</div>
+                            <button onClick={() => seatCustomer(entry)} style={{ marginTop: '5px', width: '100%', padding: '4px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '5px', fontSize: '10px', fontWeight: '800', cursor: 'pointer' }}>Seat 🪑</button>
+                            <button onClick={() => removeFromWaiting(tokenNum)} style={{ marginTop: '3px', width: '100%', padding: '3px', background: 'rgba(244,67,54,0.2)', color: '#ef9a9a', border: '1px solid #f44336', borderRadius: '5px', fontSize: '10px', fontWeight: '700', cursor: 'pointer' }}>Remove</button>
+                          </div>
+                        ) : (
+                          <div key={tokenNum} onClick={() => addToWaiting(tokenNum)} style={{ flex: '1', minWidth: '80px', background: 'rgba(255,255,255,0.04)', border: '1.5px dashed rgba(156,39,176,0.3)', borderRadius: '10px', padding: '8px', textAlign: 'center', cursor: 'pointer' }}>
+                            <div style={{ fontSize: '20px', color: 'rgba(206,147,216,0.3)' }}>+</div>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: 'rgba(206,147,216,0.4)', marginTop: '2px' }}>Token {tokenNum}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* ── CURRENT BILL PANEL — shown when an occupied table is selected ── */}
               {selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT' && tableStatus[selectedTable] === 'occupied' && (() => {
                 const runningOrder = orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered');
@@ -2404,9 +2459,12 @@ function CafePOS() {
                 return (
                   <div style={{ background: '#0d1f35', border: '2px solid #FC8019', borderRadius: '12px', padding: '14px 16px', marginBottom: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '900', color: '#FC8019' }}>📋 Current Bill — Table {selectedTable}</div>
-                      <div style={{ fontSize: '13px', fontWeight: '900', color: '#fff', background: runningOrder.paymentStatus === 'paid' ? '#1B5E20' : '#B71C1C', padding: '3px 12px', borderRadius: '20px' }}>
-                        {runningOrder.paymentStatus === 'paid' ? '✅ PAID' : '🔴 PENDING'} · ₹{runningTotal}
+                      <div style={{ fontSize: '14px', fontWeight: '900', color: '#FC8019' }}>📋 Current Bill — {tName(selectedTable)}</div>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <button onClick={() => { setEditingOrderId(runningOrder.id); setEditingOrderItems([...(runningOrder.items||[])]); }} style={{ padding: '4px 12px', background: 'rgba(33,150,243,0.2)', color: '#90CAF9', border: '1.5px solid #90CAF9', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '800' }}>✏️ Edit Items</button>
+                        <div style={{ fontSize: '13px', fontWeight: '900', color: '#fff', background: runningOrder.paymentStatus === 'paid' ? '#1B5E20' : '#B71C1C', padding: '3px 12px', borderRadius: '20px' }}>
+                          {runningOrder.paymentStatus === 'paid' ? '✅ PAID' : '🔴 PENDING'} · ₹{runningTotal}
+                        </div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -2417,7 +2475,7 @@ function CafePOS() {
                       ))}
                     </div>
                     <div style={{ marginTop: '8px', fontSize: '11px', color: 'rgba(255,255,255,0.45)', fontWeight: '600' }}>
-                      ➕ Select new items below — they will be added to this bill
+                      ➕ Select new items below to add to this bill
                     </div>
                   </div>
                 );
