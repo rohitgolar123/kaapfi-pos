@@ -1346,7 +1346,7 @@ function CafePOS() {
       } else {
         // Start KOT + token counter fetch in parallel while we build the order
         const kotNumPromise = getNextKOTNumber();
-        const tokenNumPromise = selectedTable === 'T/A' ? getNextTokenNumber() : Promise.resolve(null);
+        const tokenNumPromise = (selectedTable === 'T/A' || selectedTable === 'WAIT') ? getNextTokenNumber() : Promise.resolve(null);
         // Save order with a temp KOT number immediately so kitchen sees it fast
         const tempOrder = { ...buildOrderObject('paid'), kotNumber: null };
         const firebaseDocId = await saveOrderToFirebase(tempOrder);
@@ -1356,7 +1356,7 @@ function CafePOS() {
           return;
         }
         // Order is in Firestore — kitchen sees it now. Clear form immediately.
-        if (selectedTable && selectedTable !== 'T/A') {
+        if (selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT') {
           const u = { ...tableStatus, [selectedTable]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u);
         }
         const billOrderForPrint = { ...tempOrder, firebaseDocId };
@@ -1378,7 +1378,7 @@ function CafePOS() {
         deductInventory(itemsSnapshot);
         return;
       }
-      if (selectedTable && selectedTable !== 'T/A') {
+      if (selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT') {
         const u = { ...tableStatus, [selectedTable]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u);
       }
       clearOrderForm();
@@ -1410,7 +1410,7 @@ function CafePOS() {
         });
       } else {
         const kotNumPromise = getNextKOTNumber();
-        const tokenNumPromise = selectedTable === 'T/A' ? getNextTokenNumber() : Promise.resolve(null);
+        const tokenNumPromise = (selectedTable === 'T/A' || selectedTable === 'WAIT') ? getNextTokenNumber() : Promise.resolve(null);
         const tempOrder = { ...buildOrderObject('pending'), kotNumber: null };
         const firebaseDocId = await saveOrderToFirebase(tempOrder);
         if (!firebaseDocId) {
@@ -1419,7 +1419,7 @@ function CafePOS() {
           return;
         }
         // Order saved — kitchen sees it. Update table and clear form immediately.
-        if (selectedTable && selectedTable !== 'T/A') {
+        if (selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT') {
           const u = { ...tableStatus, [selectedTable]: 'occupied' }; setTableStatus(u); saveTableStatusToCloud(u);
         }
         clearOrderForm();
@@ -1967,7 +1967,7 @@ function CafePOS() {
   // Dynamic table list — used everywhere instead of hardcoded [1,2,3,4]
   const tableNumbers = useMemo(() => Array.from({ length: settings.tableCount || 10 }, (_, i) => i + 1), [settings.tableCount]);
   // Custom name for any table number (falls back to T{n})
-  const tName = (t) => t === 'T/A' ? (settings.takeawayLabel || 'Takeaway') : ((settings.tableNames || {})[t] || `T${t}`);
+  const tName = (t) => t === 'T/A' ? (settings.takeawayLabel || 'Takeaway') : t === 'WAIT' ? 'Waiting' : ((settings.tableNames || {})[t] || `T${t}`);
 
   if (!isLoggedIn && !isPublicMenuMode) {
     return (
@@ -2002,7 +2002,7 @@ function CafePOS() {
             <div>
               <div style={{ fontSize: '18px', fontWeight: '900', color: '#FC8019' }}>🧾 Bill #{o.id.toString().slice(-5)}</div>
               <div style={{ fontSize: '12px', color: '#c8e0f4', marginTop: '3px' }}>
-                {o.tableNumber && o.tableNumber !== 'T/A' ? `🪑 ${tName(o.tableNumber)}` : o.tableNumber === 'T/A' ? `📦 ${tName('T/A')}` : ''}{o.customerName ? `  ·  ${o.customerName}` : ''}
+                {o.tableNumber === 'T/A' ? `📦 ${tName('T/A')}` : o.tableNumber === 'WAIT' ? `🎫 Waiting` : o.tableNumber ? `🪑 ${tName(o.tableNumber)}` : ''}{o.customerName ? `  ·  ${o.customerName}` : ''}
               </div>
               <div style={{ fontSize: '11px', color: 'rgba(200,224,244,0.5)', marginTop: '2px' }}>{o.date} · {o.time}</div>
             </div>
@@ -2381,10 +2381,16 @@ function CafePOS() {
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>{tName('T/A')}</div>
                   <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'T/A' ? '#fff' : '#90CAF9' }}>{selectedTable === 'T/A' ? 'Selected' : 'Token'}</div>
                 </div>
+                <div onClick={() => setSelectedTable(selectedTable === 'WAIT' ? null : 'WAIT')}
+                  style={{ flex: '1', minWidth: '80px', background: selectedTable === 'WAIT' ? '#9C27B0' : 'rgba(156,39,176,0.12)', border: `2px solid ${selectedTable === 'WAIT' ? '#7B1FA2' : '#CE93D8'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}>
+                  <div style={{ fontSize: '18px' }}>{selectedTable === 'WAIT' ? '✅' : '🎫'}</div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>Waiting</div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'WAIT' ? '#fff' : '#CE93D8' }}>{selectedTable === 'WAIT' ? 'Selected' : 'Token'}</div>
+                </div>
               </div>
 
               {/* ── CURRENT BILL PANEL — shown when an occupied table is selected ── */}
-              {selectedTable && selectedTable !== 'T/A' && tableStatus[selectedTable] === 'occupied' && (() => {
+              {selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT' && tableStatus[selectedTable] === 'occupied' && (() => {
                 const runningOrder = orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status || '') !== 'delivered');
                 if (!runningOrder) return null;
                 const runningTotal = runningOrder.items.reduce((s, i) => s + (i.price || 0) * (i.quantity || 1), 0);
@@ -2453,14 +2459,14 @@ function CafePOS() {
             {isMobile && <div style={{ background: '#122B45', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)', position: 'sticky', top: 0, zIndex: 10, marginBottom: '12px' }}>
               <button onClick={() => setShowMobileCart(false)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: '28px', cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>←</button>
               <span style={{ fontSize: '18px', fontWeight: '900', color: '#fff', flex: 1 }}>🛒 Order</span>
-              {selectedTable && <span style={{ background: '#FC8019', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>{selectedTable === 'T/A' ? '📦 T/A' : `🪑 Table ${selectedTable}`}</span>}
+              {selectedTable && <span style={{ background: selectedTable === 'WAIT' ? '#9C27B0' : '#FC8019', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>{selectedTable === 'T/A' ? '📦 T/A' : selectedTable === 'WAIT' ? '🎫 Waiting' : `🪑 Table ${selectedTable}`}</span>}
             </div>}
             <div style={isMobile ? { padding: '0 16px 100px' } : {}}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                 <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#fff' }}>🛒 Current Order ({currentOrder.length})</h3>
-                {selectedTable && <span style={{ background: '#FC8019', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>{selectedTable === 'T/A' ? '📦 Takeaway' : `🪑 Table ${selectedTable}`}</span>}
+                {selectedTable && <span style={{ background: selectedTable === 'WAIT' ? '#9C27B0' : '#FC8019', color: '#fff', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '800' }}>{selectedTable === 'T/A' ? '📦 Takeaway' : selectedTable === 'WAIT' ? '🎫 Waiting' : `🪑 Table ${selectedTable}`}</span>}
               </div>
-              {selectedTable && selectedTable !== 'T/A' && tableStatus[selectedTable] === 'occupied' && currentOrder.length > 0 && (
+              {selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT' && tableStatus[selectedTable] === 'occupied' && currentOrder.length > 0 && (
                 <div style={{ background: 'rgba(252,128,25,0.12)', border: '1.5px solid #FC8019', borderRadius: '8px', padding: '8px 12px', marginBottom: '10px', fontSize: '12px', fontWeight: '700', color: '#FC8019' }}>
                   ➕ Adding more items to Table {selectedTable} — existing order loaded
                 </div>
