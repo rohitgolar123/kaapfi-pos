@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot, orderBy } from "firebase/firestore";
 
@@ -14,7 +14,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const CAFE_PASSWORD = "Kaapfi@737";
+const CAFE_PASSWORD = "9923022925";
 const DELETE_PASSWORD = "9923022925";
 
 const defaultSettings = {
@@ -1251,6 +1251,12 @@ export default function CafePOS() {
         : null;
       if (existingTableOrder) {
         await mergeItemsIntoExistingOrder(existingTableOrder, itemsSnapshot, 'pending');
+        // KOT for add-on: only the NEW items, clearly labelled so kitchen isn't confused
+        printKOT({
+          ...existingTableOrder,
+          items: itemsSnapshot,
+          kotNumber: `${existingTableOrder.kotNumber || '?'}-ADD`,
+        });
       } else {
         const kotNumPromise = getNextKOTNumber();
         const tempOrder = { ...buildOrderObject('pending'), kotNumber: null };
@@ -1359,15 +1365,25 @@ export default function CafePOS() {
     html, body { margin: 0; padding: 0; width: 76mm; font-family: 'Courier New', monospace; color: #000; }
   `;
 
-  const printBill = () => {
-    if (currentOrder.length === 0) { alert('No items'); return; }
-    const now = new Date();
+  // historicalOrder = null → print current live order; pass an order object → reprint from history
+  const printBill = (historicalOrder = null) => {
+    const bItems      = historicalOrder ? (historicalOrder.items || []) : currentOrder;
+    const bSubtotal   = historicalOrder ? (historicalOrder.subtotal || bItems.reduce((s,i)=>s+(i.price||0)*(i.quantity||1),0)) : subtotal;
+    const bTotal      = historicalOrder ? (historicalOrder.total || bSubtotal) : total;
+    const bTax        = historicalOrder ? (historicalOrder.tax || 0) : tax;
+    const bDiscount   = historicalOrder ? (historicalOrder.totalDiscount || 0) : totalDiscount;
+    const bPayment    = historicalOrder ? (historicalOrder.paymentMethod || 'cash') : paymentMethod;
+    const bCustName   = historicalOrder ? (historicalOrder.customerName || '') : customerName;
+    const bCustPhone  = historicalOrder ? (historicalOrder.customerPhone || '') : customerPhone;
+    const now         = historicalOrder ? new Date(historicalOrder.timestamp || Date.now()) : new Date();
+
+    if (bItems.length === 0) { alert('No items'); return; }
     const billNo = `K90-${now.getFullYear().toString().slice(2)}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(todayOrders.length + 1).padStart(3,'0')}`;
-    const totalItems = currentOrder.reduce((sum, i) => sum + i.quantity, 0);
+    const totalItems = bItems.reduce((sum, i) => sum + (i.quantity||1), 0);
 
     // Direct BT/USB path — plain text, no dialog, instant print
     if (btConnected || printerConnected) {
-      const W = 32; // chars wide on 80mm paper
+      const W = 32;
       const rpad = (a, b, tot) => {
         const s = `${a}${b}`;
         return s.length >= tot ? s : a + ' '.repeat(tot - a.length - String(b).length) + b;
@@ -1380,18 +1396,18 @@ export default function CafePOS() {
         { text: rpad(`Bill: ${billNo}`, '', W) },
         { text: rpad('Date:', now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}), W) },
         { text: rpad('Time:', now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true}), W) },
-        ...(customerName ? [{ text: rpad('Name:', customerName, W) }] : []),
-        ...(customerPhone ? [{ text: rpad('Phone:', customerPhone, W) }] : []),
+        ...(bCustName  ? [{ text: rpad('Name:',  bCustName,  W) }] : []),
+        ...(bCustPhone ? [{ text: rpad('Phone:', bCustPhone, W) }] : []),
         { divider: true },
-        ...currentOrder.map(i => ({ text: rpad(`${i.quantity}x ${i.name}`, `Rs${i.price * i.quantity}`, W) })),
+        ...bItems.map(i => ({ text: rpad(`${i.quantity||1}x ${i.name}`, `Rs${(i.price||0) * (i.quantity||1)}`, W) })),
         { divider: true },
-        { text: rpad(`Items: ${totalItems}   Subtotal:`, `Rs${subtotal}`, W) },
-        ...(totalDiscount > 0 ? [{ text: rpad('Discount:', `-Rs${totalDiscount.toFixed(0)}`, W) }] : []),
-        ...(tax > 0 ? [{ text: rpad('Tax:', `Rs${tax.toFixed(0)}`, W) }] : []),
+        { text: rpad(`Items: ${totalItems}   Subtotal:`, `Rs${bSubtotal}`, W) },
+        ...(bDiscount > 0 ? [{ text: rpad('Discount:', `-Rs${bDiscount.toFixed(0)}`, W) }] : []),
+        ...(bTax > 0 ? [{ text: rpad('Tax:', `Rs${bTax.toFixed(0)}`, W) }] : []),
         { divider: true },
-        { text: rpad('TOTAL:', `Rs${total.toFixed(0)}`, W), bold: true },
+        { text: rpad('TOTAL:', `Rs${bTotal.toFixed(0)}`, W), bold: true },
         { divider: true },
-        { text: `Payment: ${paymentMethod.toUpperCase()}`, center: true },
+        { text: `Payment: ${bPayment.toUpperCase()}`, center: true },
         { text: settings.tagline || '', center: true },
         { text: 'Thank you! Visit again', center: true },
         { text: 'IG: @kaapfi90s', center: true },
@@ -1401,7 +1417,7 @@ export default function CafePOS() {
     }
 
     // Fallback: browser print dialog (desktop or no BT)
-    const itemsHTML = currentOrder.map(i =>
+    const itemsHTML = bItems.map(i =>
       `<tr><td style="padding:3px 0;">${i.quantity}</td><td style="padding:3px 0;">${i.name}</td><td style="padding:3px 0;text-align:right;">₹${i.price}</td><td style="padding:3px 0;text-align:right;">₹${i.price * i.quantity}</td></tr>`
     ).join('');
     printWithIframe(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -1423,17 +1439,17 @@ export default function CafePOS() {
       <div class="row"><span>Bill No:</span><span>${billNo}</span></div>
       <div class="row"><span>Date:</span><span>${now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}</span></div>
       <div class="row"><span>Time:</span><span>${now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:true})}</span></div>
-      ${customerName ? `<div class="row"><span>Customer:</span><span>${customerName}</span></div>` : ''}
-      ${customerPhone ? `<div class="row"><span>Phone:</span><span>${customerPhone}</span></div>` : ''}
+      ${bCustName  ? `<div class="row"><span>Customer:</span><span>${bCustName}</span></div>` : ''}
+      ${bCustPhone ? `<div class="row"><span>Phone:</span><span>${bCustPhone}</span></div>` : ''}
     </div>
     <table><tr class="th"><td>Qt</td><td>Item</td><td style="text-align:right">Rate</td><td style="text-align:right">Amt</td></tr>${itemsHTML}</table>
     <div class="sub">
-      <div class="row"><span>Items: ${totalItems}</span><span>Subtotal: ₹${subtotal}</span></div>
-      ${totalDiscount > 0 ? `<div class="row"><span>Discount:</span><span>-₹${totalDiscount.toFixed(0)}</span></div>` : ''}
-      ${tax > 0 ? `<div class="row"><span>Tax:</span><span>₹${tax.toFixed(0)}</span></div>` : ''}
+      <div class="row"><span>Items: ${totalItems}</span><span>Subtotal: ₹${bSubtotal}</span></div>
+      ${bDiscount > 0 ? `<div class="row"><span>Discount:</span><span>-₹${bDiscount.toFixed(0)}</span></div>` : ''}
+      ${bTax > 0 ? `<div class="row"><span>Tax:</span><span>₹${bTax.toFixed(0)}</span></div>` : ''}
     </div>
-    <div class="tot"><div class="row"><span>TOTAL</span><span>₹${total.toFixed(0)}</span></div></div>
-    <div style="text-align:center;font-size:10px;padding:2px 0;">Payment: ${paymentMethod.toUpperCase()}</div>
+    <div class="tot"><div class="row"><span>TOTAL</span><span>₹${bTotal.toFixed(0)}</span></div></div>
+    <div style="text-align:center;font-size:10px;padding:2px 0;">Payment: ${bPayment.toUpperCase()}</div>
     <div class="ftr"><i>${settings.tagline}</i><br>जो है, काफी है।<br>Thank you, come again! · IG: @kaapfi90s</div>
     </body></html>`);
   };
@@ -1767,13 +1783,12 @@ export default function CafePOS() {
   };
   
   const todayISO = getISTDateStr();
-  const todayOrders = orders.filter(o => {
-    // Match against IST date of order — handles both old UTC-saved and new IST-saved orders
+  const todayOrders = useMemo(() => orders.filter(o => {
     const savedDate = o.date || '';
     const istDate = toISTDate(o.timestamp);
     return savedDate === todayISO || istDate === todayISO;
-  });
-  const todayRevenue = todayOrders.reduce((sum, o) => sum + o.total, 0);
+  }), [orders, todayISO]);
+  const todayRevenue = useMemo(() => todayOrders.reduce((sum, o) => sum + o.total, 0), [todayOrders]);
   const aiRec = customerOrders.length > 0 ? getAIRecommendation(customerOrders, menuItems) : null;
 
   const selectedDateOrders = orders.filter(o => {
@@ -2906,7 +2921,9 @@ export default function CafePOS() {
                                 );
                               })()}
                               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                <button onClick={() => setViewBillOrder(order)} style={{ padding: '7px 12px', background: 'rgba(252,128,25,0.15)', color: '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '900' }}>👁 View Bill</button>
+                                <button onClick={() => setViewBillOrder(order)} style={{ padding: '7px 12px', background: 'rgba(252,128,25,0.15)', color: '#FC8019', border: '1.5px solid #FC8019', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '900' }}>👁 View</button>
+                                <button onClick={() => printBill(order)} style={{ padding: '7px 10px', background: 'rgba(105,240,174,0.12)', color: '#69F0AE', border: '1.5px solid #69F0AE', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '800' }}>🖨️ Bill</button>
+                                <button onClick={() => { setEditingOrderId(order.id); setEditingOrderItems([...(order.items||[])]); }} style={{ padding: '7px 10px', background: 'rgba(33,150,243,0.12)', color: '#90CAF9', border: '1.5px solid #90CAF9', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: '800' }}>✏️ Edit</button>
                                 {!isPaid && (() => {
                                   const chosenMethod = billsPayMethod[order.id] || order.paymentMethod || 'cash';
                                   return (
