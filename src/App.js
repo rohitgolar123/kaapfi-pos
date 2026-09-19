@@ -2661,7 +2661,15 @@ function CafePOS() {
                     </div>
                   )}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
-                    <button onClick={printBill} style={{ padding: '10px', background: '#0F2236', color: '#FC8019', border: '2px solid #FC8019', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>🖨️ Print</button>
+                    <button onClick={() => {
+                      if (currentOrder.length > 0) { printBill(); return; }
+                      // No new items — print the existing running order for this table
+                      const runningOrder = selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT'
+                        ? orders.find(o => String(o.tableNumber) === String(selectedTable) && (o.status||'') !== 'delivered' && isTodayOrder(o))
+                        : null;
+                      if (runningOrder) printBill(runningOrder);
+                      else alert('No items to print');
+                    }} style={{ padding: '10px', background: '#0F2236', color: '#FC8019', border: '2px solid #FC8019', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>🖨️ Print</button>
                     <button onClick={sendWhatsApp} style={{ padding: '10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>📱 WhatsApp</button>
                   </div>
                   <button disabled={isSubmittingOrder} style={{ width: '100%', padding: isMobile ? '18px' : '14px', background: isSubmittingOrder ? '#555' : 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: isSubmittingOrder ? 'not-allowed' : 'pointer', fontSize: isMobile ? '17px' : '15px', marginBottom: '8px', opacity: isSubmittingOrder ? 0.7 : 1 }} onClick={() => { completeOrder(); if(isMobile) setShowMobileCart(false); }}>{isSubmittingOrder ? '⏳ Saving...' : `✅ Complete & Paid • ₹${total.toFixed(0)}`}</button>
