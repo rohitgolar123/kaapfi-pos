@@ -255,22 +255,41 @@ async function trackUpsellEvent(sessionId, eventType, itemId, cartValue) {
   try { await addDoc(collection(db, "upsellEvents"), { sessionId, eventType, itemId: itemId || null, cartValue, timestamp: new Date().toISOString(), date: new Date().toISOString().split('T')[0] }); } catch (e) {}
 }
 
-async function apiWrite(op, path, data) {
-  const r = await fetch('/api/write', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ op, path, data })
-  });
-  return r.json();
+// Auto-retry with exponential backoff: 3 attempts → 1s, 2s, 4s gaps
+async function apiWrite(op, path, data, retries = 3) {
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const r = await fetch('/api/write', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op, path, data })
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    } catch (e) {
+      lastErr = e;
+      if (i < retries - 1) await new Promise(res => setTimeout(res, 1000 * Math.pow(2, i)));
+    }
+  }
+  throw lastErr;
 }
 
+// Layer 2: if Firebase unreachable after 3 retries → save to offline queue
+// Queue auto-flushes when internet returns (see flushOfflineQueue below)
 async function saveOrderToFirebase(order) {
   try {
     const result = await apiWrite('add', 'orders', { ...order, timestamp: new Date().toISOString() });
     return result.id || null;
   } catch (e) {
-    console.error('[saveOrderToFirebase] FAILED:', e);
-    return null;
+    console.error('[saveOrderToFirebase] All retries failed — saving to offline queue');
+    try {
+      const queue = JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]');
+      const localId = 'local_' + Date.now();
+      queue.push({ ...order, timestamp: new Date().toISOString(), _queuedAt: Date.now(), _localId: localId });
+      localStorage.setItem('kaapfi_offlineQueue', JSON.stringify(queue));
+      return localId; // non-null means order was captured — flow continues normally
+    } catch (qErr) { return null; }
   }
 }
 
@@ -348,7 +367,34 @@ function downloadCSV(data, filename) {
   URL.revokeObjectURL(url);
 }
 
-export default function CafePOS() {
+// Layer 3: crash recovery — catches any JS error, auto-reloads in 4 seconds
+class ErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { crashed: false }; }
+  static getDerivedStateFromError() { return { crashed: true }; }
+  componentDidCatch(error) {
+    try {
+      const log = JSON.parse(localStorage.getItem('kaapfi_errorLog') || '[]');
+      log.unshift({ error: String(error), time: new Date().toISOString() });
+      localStorage.setItem('kaapfi_errorLog', JSON.stringify(log.slice(0, 20)));
+    } catch (e) {}
+    setTimeout(() => window.location.reload(), 4000);
+  }
+  render() {
+    if (!this.state.crashed) return this.props.children;
+    return (
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', background:'#0A1929', color:'#fff', fontFamily:'sans-serif', gap:'16px' }}>
+        <div style={{ fontSize:'56px' }}>🔄</div>
+        <div style={{ fontSize:'22px', fontWeight:'800', color:'#69F0AE' }}>System Recovering...</div>
+        <div style={{ fontSize:'14px', color:'rgba(255,255,255,0.5)' }}>Auto-reloading in 4 seconds — your data is safe</div>
+        <button onClick={() => window.location.reload()} style={{ marginTop:'8px', padding:'12px 28px', background:'#FC8019', color:'#fff', border:'none', borderRadius:'8px', fontWeight:'700', cursor:'pointer', fontSize:'15px' }}>
+          Reload Now
+        </button>
+      </div>
+    );
+  }
+}
+
+function CafePOS() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isPublicMenuMode, setIsPublicMenuMode] = useState(() => {
     const p = new URLSearchParams(window.location.search);
@@ -691,7 +737,18 @@ export default function CafePOS() {
         });
 
         setSyncStatus('connected');
-      } catch (e) { setSyncStatus('offline'); }
+        // Cache orders locally so they survive a reload even if Firebase is briefly unreachable
+        try { localStorage.setItem('kaapfi_ordersCache', JSON.stringify({ orders: todayOrders, at: Date.now() })); } catch (e) {}
+      } catch (e) {
+        setSyncStatus('offline');
+        // Serve from local cache if available (last known good state)
+        try {
+          const cache = JSON.parse(localStorage.getItem('kaapfi_ordersCache') || 'null');
+          if (cache && Date.now() - cache.at < 600000 && Array.isArray(cache.orders) && cache.orders.length > 0) {
+            setOrders(prev => prev.length === 0 ? cache.orders : prev);
+          }
+        } catch (ce) {}
+      }
     };
 
     // ── Slow poll: menu, settings, etc. via Vercel API proxy every 30s ───
@@ -887,6 +944,12 @@ export default function CafePOS() {
         issues.push({ type: 'SYNC_OFFLINE', severity: 'critical', message: 'Firebase sync is offline — orders may not be saving' });
       }
 
+      // CHECK 5: Offline queue — orders waiting to sync
+      try {
+        const qLen = JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]').length;
+        if (qLen > 0) issues.push({ type: 'OFFLINE_QUEUE', severity: 'warning', message: `${qLen} order(s) in offline queue — will sync when online` });
+      } catch (e) {}
+
       const status = issues.some(i => i.severity === 'critical') ? 'critical'
                    : issues.some(i => i.severity === 'warning') ? 'degraded'
                    : 'healthy';
@@ -899,6 +962,39 @@ export default function CafePOS() {
     const interval = setInterval(runHealthCheck, 30000);
     return () => clearInterval(interval);
   }, [isLoggedIn, menuItems.length, orders.length]); // eslint-disable-line
+
+  // ── OFFLINE QUEUE: flush queued orders when internet returns ─────────
+  const [queueCount, setQueueCount] = React.useState(0);
+  const flushOfflineQueue = React.useCallback(async () => {
+    try {
+      const queue = JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]');
+      if (queue.length === 0) { setQueueCount(0); return; }
+      const remaining = [];
+      let synced = 0;
+      for (const order of queue) {
+        try {
+          const { _queuedAt, _localId, ...cleanOrder } = order;
+          const result = await apiWrite('add', 'orders', cleanOrder);
+          if (result && result.id) synced++;
+          else remaining.push(order);
+        } catch (e) { remaining.push(order); }
+      }
+      localStorage.setItem('kaapfi_offlineQueue', JSON.stringify(remaining));
+      setQueueCount(remaining.length);
+      if (synced > 0) console.log(`[OfflineQueue] Synced ${synced} queued order(s) to Firebase`);
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    // Seed queue count on load
+    try { setQueueCount(JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]').length); } catch (e) {}
+    // Flush when browser comes back online
+    const onOnline = () => { setSyncStatus('syncing'); flushOfflineQueue(); };
+    window.addEventListener('online', onOnline);
+    // Also flush every 60s in case connection silently recovered
+    const qi = setInterval(() => { if (navigator.onLine) flushOfflineQueue(); }, 60000);
+    return () => { window.removeEventListener('online', onOnline); clearInterval(qi); };
+  }, [flushOfflineQueue]); // eslint-disable-line
 
   // ── DATAGUARD: Incidents real-time listener ───────────────────────────
   useEffect(() => {
@@ -2069,6 +2165,7 @@ export default function CafePOS() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.15)', padding: '6px 12px', borderRadius: '16px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: syncStatus === 'connected' ? '#69F0AE' : syncStatus === 'syncing' ? '#FFD54F' : '#EF5350', boxShadow: syncStatus === 'connected' ? '0 0 6px #69F0AE' : syncStatus === 'offline' ? '0 0 6px #EF5350' : 'none' }} />
               <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff' }}>{syncStatus === 'connected' ? 'Live' : syncStatus === 'syncing' ? 'Syncing…' : 'Offline'}</span>
+              {queueCount > 0 && <span style={{ fontSize: '10px', fontWeight: '800', background: '#FF7043', color: '#fff', borderRadius: '8px', padding: '1px 6px', marginLeft: '2px' }} title="Orders saved locally — will sync when online">{queueCount} queued</span>}
             </div>
             {/* DataGuard health badge */}
             <button onClick={() => { setActiveTab('monitor'); }} title="System Health — click to open Monitor" style={{ background: systemHealth.status === 'healthy' ? 'rgba(105,240,174,0.2)' : systemHealth.status === 'critical' ? 'rgba(239,83,80,0.3)' : 'rgba(255,213,79,0.2)', border: 'none', padding: '6px 10px', borderRadius: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -4763,4 +4860,8 @@ export default function CafePOS() {
       </footer>
     </div>
   );
+}
+
+export default function App() {
+  return <ErrorBoundary><CafePOS /></ErrorBoundary>;
 }
