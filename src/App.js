@@ -36,6 +36,8 @@ const defaultSettings = {
   preventNegativeStock: false,
   autoPrintKOT: false,
   autoPrintBill: false,
+  tableCount: 10,
+  staffPin: '1234',
 };
 
 const defaultMenu = [
@@ -479,7 +481,7 @@ function CafePOS() {
   const [selectedTable, setSelectedTable] = useState(null);
   const [newMenuOrders, setNewMenuOrders] = useState([]);
   const knownOrderIdsRef = useRef(null);
-  const [tableStatus, setTableStatus] = useState({ 1: 'available', 2: 'available', 3: 'available', 4: 'available' });
+  const [tableStatus, setTableStatus] = useState({});
   const [featuredItems, setFeaturedItems] = useState(() => { try { return JSON.parse(localStorage.getItem('featuredItems') || '[]'); } catch(e) { return []; } });
   const [reelItems, setReelItems] = useState(() => { try { return JSON.parse(localStorage.getItem('reelItems') || '[]'); } catch(e) { return []; } }); // [{itemId, videoUrl}] max 3
   const [customCategories, setCustomCategories] = useState(() => { try { return JSON.parse(localStorage.getItem('customCategories') || '[]'); } catch(e) { return []; } });
@@ -551,6 +553,7 @@ function CafePOS() {
   const isRecoveringRef = useRef(false);
   const lastMenuBackupRef = useRef(null);
   const syncStatusRef = useRef('connected');
+  const tableCountRef = useRef(10);
 
   // ── Direct thermal printer (USB Serial + Bluetooth / ESC-POS) ─────────────
   const serialPortRef = useRef(null);
@@ -681,7 +684,8 @@ function CafePOS() {
   // LOGIN CHECK
   useEffect(() => {
     const loggedIn = localStorage.getItem('kaapfi_loggedIn');
-    if (loggedIn === 'true') setIsLoggedIn(true);
+    if (loggedIn === 'manager' || loggedIn === 'true') { setIsLoggedIn(true); setStaffMode(false); }
+    else if (loggedIn === 'staff') { setIsLoggedIn(true); setStaffMode(true); }
     
     // Check if this is the dedicated menu hostname OR URL param
     const urlParams = new URLSearchParams(window.location.search);
@@ -730,9 +734,9 @@ function CafePOS() {
         );
         setTableStatus(prev => {
           const next = { ...prev };
-          [1,2,3,4].forEach(n => {
+          for (let n = 1; n <= (tableCountRef.current || 10); n++) {
             next[n] = activeTableNums.has(String(n)) ? (prev[n] === 'available' ? 'occupied' : prev[n]) : 'available';
-          });
+          }
           return next;
         });
 
@@ -891,6 +895,17 @@ function CafePOS() {
 
   // Keep syncStatusRef current so health monitor reads it without re-running
   useEffect(() => { syncStatusRef.current = syncStatus; }, [syncStatus]);
+
+  // Keep tableCountRef current and expand tableStatus when table count changes
+  useEffect(() => {
+    const n = settings.tableCount || 10;
+    tableCountRef.current = n;
+    setTableStatus(prev => {
+      const next = { ...prev };
+      for (let i = 1; i <= n; i++) { if (!next[i]) next[i] = 'available'; }
+      return next;
+    });
+  }, [settings.tableCount]);
 
   // ── DATAGUARD: Health monitor — runs every 30s ───────────────────────
   useEffect(() => {
@@ -1122,9 +1137,21 @@ function CafePOS() {
     prevOrderCountRef.current = activeCount;
   }, [orders]); // eslint-disable-line
 
-  const handleLogin = () => {
-    if (loginInput === CAFE_PASSWORD) { setIsLoggedIn(true); localStorage.setItem('kaapfi_loggedIn', 'true'); setLoginError(''); setLoginInput(''); }
-    else { setLoginError('❌ Wrong password!'); }
+  const handleLogin = (role = 'manager') => {
+    if (role === 'manager') {
+      if (loginInput === CAFE_PASSWORD) {
+        setIsLoggedIn(true); setStaffMode(false);
+        localStorage.setItem('kaapfi_loggedIn', 'manager');
+        setLoginError(''); setLoginInput('');
+      } else { setLoginError('❌ Wrong manager password'); }
+    } else {
+      const pin = settings.staffPin || '1234';
+      if (loginInput === pin) {
+        setIsLoggedIn(true); setStaffMode(true);
+        localStorage.setItem('kaapfi_loggedIn', 'staff');
+        setLoginError(''); setLoginInput('');
+      } else { setLoginError('❌ Wrong staff PIN'); }
+    }
   };
   const handleLogout = () => { setIsLoggedIn(false); localStorage.removeItem('kaapfi_loggedIn'); setCurrentOrder([]); };
 
@@ -1914,6 +1941,9 @@ function CafePOS() {
   const netCashInHand = cashReceived - cashExpenses;
   const netProfit = totalReceived - totalExpenses;
 
+  // Dynamic table list — used everywhere instead of hardcoded [1,2,3,4]
+  const tableNumbers = useMemo(() => Array.from({ length: settings.tableCount || 10 }, (_, i) => i + 1), [settings.tableCount]);
+
   if (!isLoggedIn && !isPublicMenuMode) {
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
@@ -1921,10 +1951,14 @@ function CafePOS() {
           <div style={{ fontSize: '64px', marginBottom: '16px' }}>☕</div>
           <h1 style={{ margin: '0 0 8px', fontSize: '28px', color: '#000', fontWeight: '700' }}>{settings.cafeName}</h1>
           <p style={{ margin: '0 0 32px', fontSize: '14px', color: '#000' }}>{settings.tagline}</p>
-          <input type="password" placeholder="Enter Password" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin()} style={{ width: '100%', padding: '14px', fontSize: '16px', border: '2px solid #e0e0e0', borderRadius: '8px', marginBottom: '16px', boxSizing: 'border-box' }} />
-          {loginError && <div style={{ color: '#E64A19', fontSize: '14px', marginBottom: '16px' }}>{loginError}</div>}
-          <button onClick={handleLogin} style={{ width: '100%', padding: '14px', fontSize: '16px', fontWeight: '700', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>LOGIN →</button>
-          <p style={{ marginTop: '24px', fontSize: '12px', color: '#666' }}>Developed by Telzon Marketing</p>
+          <input type="password" placeholder="Password / Staff PIN" value={loginInput} onChange={(e) => setLoginInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleLogin('manager')} style={{ width: '100%', padding: '14px', fontSize: '16px', border: '2px solid #e0e0e0', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box' }} />
+          {loginError && <div style={{ color: '#E64A19', fontSize: '14px', marginBottom: '12px' }}>{loginError}</div>}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '8px' }}>
+            <button onClick={() => handleLogin('manager')} style={{ flex: 1, padding: '14px', fontSize: '15px', fontWeight: '700', background: '#FC8019', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Manager →</button>
+            <button onClick={() => handleLogin('staff')} style={{ flex: 1, padding: '14px', fontSize: '15px', fontWeight: '700', background: '#1a1a2e', color: '#fff', border: '2px solid #555', borderRadius: '8px', cursor: 'pointer' }}>Staff →</button>
+          </div>
+          <p style={{ fontSize: '11px', color: '#aaa', margin: '8px 0 0' }}>Manager = full access &nbsp;·&nbsp; Staff = order + KOT + bills only</p>
+          <p style={{ marginTop: '16px', fontSize: '12px', color: '#666' }}>Developed by Telzon Marketing</p>
         </div>
       </div>
     );
@@ -2240,8 +2274,14 @@ function CafePOS() {
             ))}
           </div>
           {staffMode
-            ? <button onClick={() => setShowManagerPinDialog(true)} style={{ padding: '8px 14px', border: '1.5px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.45)', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>🔒 Manager</button>
-            : <button onClick={() => { setStaffMode(true); if (!['order','kitchen','bills'].includes(activeTab)) setActiveTab('order'); }} style={{ padding: '8px 14px', border: '1.5px solid #FC8019', background: 'rgba(252,128,25,0.1)', color: '#FC8019', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>🔓 Staff Mode</button>
+            ? <>
+                <span style={{ fontSize: '11px', fontWeight: '700', color: '#FFD54F', padding: '4px 8px', background: 'rgba(255,213,79,0.1)', borderRadius: '6px', border: '1px solid rgba(255,213,79,0.3)' }}>👤 Staff</span>
+                <button onClick={() => setShowManagerPinDialog(true)} style={{ padding: '8px 14px', border: '1.5px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.45)', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>🔒 Manager</button>
+              </>
+            : <>
+                <span style={{ fontSize: '11px', fontWeight: '700', color: '#69F0AE', padding: '4px 8px', background: 'rgba(105,240,174,0.1)', borderRadius: '6px', border: '1px solid rgba(105,240,174,0.3)' }}>🔓 Manager</span>
+                <button onClick={() => { setStaffMode(true); if (!['order','kitchen','bills'].includes(activeTab)) setActiveTab('order'); }} style={{ padding: '8px 14px', border: '1.5px solid rgba(255,255,255,0.2)', background: 'transparent', color: 'rgba(255,255,255,0.45)', borderRadius: '8px', fontSize: '12px', fontWeight: '700', cursor: 'pointer', whiteSpace: 'nowrap' }}>Staff Mode</button>
+              </>
           }
         </div>
       </nav>}
@@ -2259,7 +2299,7 @@ function CafePOS() {
                     <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.85)', fontWeight: '700', marginTop: '2px' }}>Tap a table button to load order and add items</div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {[1, 2, 3, 4].filter(t => tableStatus[t] === 'occupied').map(t => (
+                    {tableNumbers.filter(t => tableStatus[t] === 'occupied').map(t => (
                       <button key={t} onClick={() => {
                         setSelectedTable(t);
                         setCurrentOrder([]);
@@ -2273,7 +2313,7 @@ function CafePOS() {
 
               {/* TABLE STATUS ROW */}
               <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-                {[1, 2, 3, 4].map(t => {
+                {tableNumbers.map(t => {
                   const occupied = tableStatus[t] === 'occupied';
                   const isSelected = selectedTable === t;
                   return (
@@ -3080,14 +3120,88 @@ function CafePOS() {
           );
         })()}
 
-        {activeTab === 'reports' && (
+        {activeTab === 'reports' && (() => {
+          // Last 7 days revenue
+          const last7 = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(); d.setDate(d.getDate() - (6 - i));
+            const iso = d.toISOString().split('T')[0];
+            const rev = orders.filter(o => (toISTDate(o.timestamp) === iso || (o.date || '').startsWith(iso))).reduce((s, o) => s + (o.total || 0), 0);
+            return { label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' }), iso, rev };
+          });
+          const maxRev = Math.max(...last7.map(d => d.rev), 1);
+          // Top 5 items this week
+          const itemSales = {};
+          last7.forEach(({ iso }) => {
+            orders.filter(o => toISTDate(o.timestamp) === iso || (o.date || '').startsWith(iso)).forEach(o => {
+              (o.items || []).forEach(i => { itemSales[i.name] = (itemSales[i.name] || 0) + (i.quantity || 1); });
+            });
+          });
+          const topItems = Object.entries(itemSales).sort((a, b) => b[1] - a[1]).slice(0, 5);
+          const weekTotal = last7.reduce((s, d) => s + d.rev, 0);
+          return (
           <div>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>📊 Reports</h2>
+
+            {/* 7-day revenue chart */}
             <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '700' }}>📥 Date Range</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#FC8019' }}>📈 Last 7 Days Revenue</div>
+                <div style={{ fontSize: '18px', fontWeight: '900', color: '#69F0AE' }}>₹{weekTotal.toLocaleString('en-IN')}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '6px', height: '120px' }}>
+                {last7.map((d, i) => (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', height: '100%', justifyContent: 'flex-end' }}>
+                    <div style={{ fontSize: '10px', fontWeight: '700', color: '#69F0AE' }}>{d.rev > 0 ? `₹${Math.round(d.rev/100)*100 === d.rev ? (d.rev/1000).toFixed(1)+'k' : d.rev}` : ''}</div>
+                    <div style={{ width: '100%', background: d.iso === todayISO ? '#FC8019' : 'rgba(105,240,174,0.5)', borderRadius: '4px 4px 0 0', height: `${Math.max(4, (d.rev / maxRev) * 80)}px`, transition: 'height 0.3s' }} />
+                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)', textAlign: 'center', whiteSpace: 'nowrap' }}>{d.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Top items + payment breakdown side by side */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: '800', color: '#FC8019', marginBottom: '12px' }}>🏆 Top Items This Week</div>
+                {topItems.length === 0 && <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)' }}>No data yet</div>}
+                {topItems.map(([name, qty], i) => (
+                  <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: '800', color: i === 0 ? '#FFD700' : 'rgba(255,255,255,0.4)', minWidth: '16px' }}>#{i+1}</span>
+                      <span style={{ fontSize: '13px', color: '#fff', fontWeight: '600' }}>{name}</span>
+                    </div>
+                    <span style={{ fontSize: '13px', fontWeight: '800', color: '#69F0AE' }}>{qty} sold</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ background: '#122B45', padding: '16px', borderRadius: '12px' }}>
+                <div style={{ fontSize: '14px', fontWeight: '800', color: '#FC8019', marginBottom: '12px' }}>💰 Payment Breakdown — Today</div>
+                {[
+                  { label: 'Cash', val: cashReceived, color: '#69F0AE' },
+                  { label: 'UPI', val: upiReceived, color: '#90CAF9' },
+                  { label: 'Card', val: cardReceived, color: '#FFD54F' },
+                ].map(({ label, val, color }) => (
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                    <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>{label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ height: '6px', borderRadius: '3px', background: color, width: `${totalReceived > 0 ? Math.round((val/totalReceived)*80) : 0}px`, minWidth: val > 0 ? '6px' : '0' }} />
+                      <span style={{ fontSize: '14px', fontWeight: '800', color }}>{val > 0 ? `₹${val.toFixed(0)}` : '—'}</span>
+                    </div>
+                  </div>
+                ))}
+                <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.15)', display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>Total</span>
+                  <span style={{ fontSize: '15px', fontWeight: '900', color: '#FC8019' }}>₹{totalReceived.toFixed(0)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Export */}
+            <div style={{ background: '#122B45', padding: '20px', borderRadius: '12px', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019', fontWeight: '700' }}>📥 Export CSV</h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: '8px', alignItems: 'end' }}>
-                <div><label style={{ fontSize: '11px', color: '#000' }}>From</label><input type="date" value={csvStartDate} onChange={(e) => setCsvStartDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
-                <div><label style={{ fontSize: '11px', color: '#000' }}>To</label><input type="date" value={csvEndDate} onChange={(e) => setCsvEndDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
+                <div><label style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>From</label><input type="date" value={csvStartDate} onChange={(e) => setCsvStartDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
+                <div><label style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>To</label><input type="date" value={csvEndDate} onChange={(e) => setCsvEndDate(e.target.value)} style={{ width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '6px', boxSizing: 'border-box', color: '#000', fontWeight: '600' }} /></div>
                 <button onClick={downloadByDateRange} style={{ padding: '10px 20px', background: '#4CAF50', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700' }}>📥 Download</button>
               </div>
             </div>
@@ -3099,7 +3213,8 @@ function CafePOS() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {activeTab === 'menu' && (
           <div>
@@ -4813,6 +4928,23 @@ function CafePOS() {
                     <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>Skip the "Print bill?" prompt — bill prints immediately when order is completed.</div>
                   </div>
                 </label>
+              </div>
+              <div style={{ padding: '14px', background: 'rgba(252,128,25,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(252,128,25,0.25)' }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#FC8019', marginBottom: '10px' }}>🪑 Table Setup</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', minWidth: '120px' }}>Number of tables</span>
+                  <input type="number" min="1" max="30" value={settings.tableCount || 10} onChange={(e) => { const n = Math.max(1, Math.min(30, parseInt(e.target.value) || 10)); updateSettings({ ...settings, tableCount: n }); }} style={{ width: '80px', padding: '8px', borderRadius: '6px', border: '1.5px solid #FC8019', background: 'rgba(0,0,0,0.4)', color: '#fff', fontWeight: '700', fontSize: '14px', textAlign: 'center' }} />
+                  <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>max 30</span>
+                </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>Changes take effect immediately. Existing occupied tables are preserved.</div>
+              </div>
+              <div style={{ padding: '14px', background: 'rgba(33,150,243,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(33,150,243,0.25)' }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#90CAF9', marginBottom: '10px' }}>🔐 Staff Login PIN</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', minWidth: '120px' }}>Staff PIN</span>
+                  <input type="text" maxLength="8" value={settings.staffPin || '1234'} onChange={(e) => updateSettings({ ...settings, staffPin: e.target.value })} style={{ width: '120px', padding: '8px', borderRadius: '6px', border: '1.5px solid #90CAF9', background: 'rgba(0,0,0,0.4)', color: '#fff', fontWeight: '700', fontSize: '16px', letterSpacing: '4px', textAlign: 'center' }} />
+                </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>Staff see only Order, Kitchen, Bills tabs. Manager password gives full access.</div>
               </div>
               <div style={{ padding: '14px', background: 'rgba(33,150,243,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(33,150,243,0.3)' }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '10px' }}>🖨️ Mac / Laptop Printer Setup</div>
