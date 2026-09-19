@@ -562,6 +562,7 @@ function CafePOS() {
   const [kotDailyCounter, setKotDailyCounter] = useState(0);
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [kitchenAlertActive, setKitchenAlertActive] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   // ── DataGuard state ──────────────────────────────────────────────────
   const [systemHealth, setSystemHealth] = useState({ status: 'healthy', menuCount: 0, lastCheck: null, lastBackup: null, incidentCount: 0 });
   const [recentIncidents, setRecentIncidents] = useState([]);
@@ -1332,6 +1333,8 @@ function CafePOS() {
 
   const completeOrder = async () => {
     if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
+    if (isSubmittingOrder) return;
+    setIsSubmittingOrder(true);
     setSyncStatus('syncing');
     const itemsSnapshot = [...currentOrder];
     try {
@@ -1389,11 +1392,15 @@ function CafePOS() {
       console.error('completeOrder error:', e);
       alert('❌ Something went wrong saving the order. Please try again.');
       setSyncStatus('connected');
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
   const placeOrderPending = async () => {
     if (currentOrder.length === 0) { alert('Add items to the order first'); return; }
+    if (isSubmittingOrder) return;
+    setIsSubmittingOrder(true);
     setSyncStatus('syncing');
     const itemsSnapshot = [...currentOrder];
     try {
@@ -1446,6 +1453,8 @@ function CafePOS() {
       console.error('placeOrderPending error:', e);
       alert('❌ Something went wrong saving the order. Please try again.');
       setSyncStatus('connected');
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -2599,8 +2608,8 @@ function CafePOS() {
                     <button onClick={printBill} style={{ padding: '10px', background: '#0F2236', color: '#FC8019', border: '2px solid #FC8019', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>🖨️ Print</button>
                     <button onClick={sendWhatsApp} style={{ padding: '10px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '12px' }}>📱 WhatsApp</button>
                   </div>
-                  <button onClick={completeOrder} style={{ width: '100%', padding: isMobile ? '18px' : '14px', background: 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: isMobile ? '17px' : '15px', marginBottom: '8px' }} onClick={() => { completeOrder(); if(isMobile) setShowMobileCart(false); }}>✅ Complete &amp; Paid • ₹{total.toFixed(0)}</button>
-                  <button style={{ width: '100%', padding: isMobile ? '16px' : '12px', background: 'linear-gradient(135deg, #FF9800 0%, #E65100 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: isMobile ? '15px' : '14px' }} onClick={() => { placeOrderPending(); if(isMobile) setShowMobileCart(false); }}>⏳ Place Order — Pay Later • ₹{total.toFixed(0)}</button>
+                  <button disabled={isSubmittingOrder} style={{ width: '100%', padding: isMobile ? '18px' : '14px', background: isSubmittingOrder ? '#555' : 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: isSubmittingOrder ? 'not-allowed' : 'pointer', fontSize: isMobile ? '17px' : '15px', marginBottom: '8px', opacity: isSubmittingOrder ? 0.7 : 1 }} onClick={() => { completeOrder(); if(isMobile) setShowMobileCart(false); }}>{isSubmittingOrder ? '⏳ Saving...' : `✅ Complete & Paid • ₹${total.toFixed(0)}`}</button>
+                  <button disabled={isSubmittingOrder} style={{ width: '100%', padding: isMobile ? '16px' : '12px', background: isSubmittingOrder ? '#555' : 'linear-gradient(135deg, #FF9800 0%, #E65100 100%)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: isSubmittingOrder ? 'not-allowed' : 'pointer', fontSize: isMobile ? '15px' : '14px', opacity: isSubmittingOrder ? 0.7 : 1 }} onClick={() => { placeOrderPending(); if(isMobile) setShowMobileCart(false); }}>{isSubmittingOrder ? '⏳ Saving...' : `⏳ Place Order — Pay Later • ₹${total.toFixed(0)}`}</button>
                 </>
               )}
             </div>{/* end mobile padding wrapper */}
