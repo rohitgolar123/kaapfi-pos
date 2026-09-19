@@ -38,6 +38,8 @@ const defaultSettings = {
   autoPrintBill: false,
   tableCount: 10,
   staffPin: '1234',
+  tableNames: {},
+  takeawayLabel: 'Takeaway',
 };
 
 const defaultMenu = [
@@ -253,6 +255,20 @@ async function getNextKOTNumber() {
     return newCount;
   } catch (e) { return Date.now() % 1000; }
 }
+async function getNextTokenNumber() {
+  const today = getISTDateStr();
+  try {
+    const ref = doc(db, "appData", "tokenCounter");
+    const snap = await getDoc(ref);
+    let newCount = 1;
+    if (snap.exists() && snap.data().date === today) {
+      newCount = (snap.data().count || 0) + 1;
+    }
+    await setDoc(ref, { count: newCount, date: today });
+    return newCount;
+  } catch (e) { return Date.now() % 100; }
+}
+
 async function trackUpsellEvent(sessionId, eventType, itemId, cartValue) {
   try { await addDoc(collection(db, "upsellEvents"), { sessionId, eventType, itemId: itemId || null, cartValue, timestamp: new Date().toISOString(), date: new Date().toISOString().split('T')[0] }); } catch (e) {}
 }
@@ -1328,8 +1344,9 @@ function CafePOS() {
         // Fire-and-forget background tasks
         if (customerPhone.length >= 10) saveCustomer(customerPhone, existingTableOrder);
       } else {
-        // Start KOT counter fetch in parallel while we build the order
+        // Start KOT + token counter fetch in parallel while we build the order
         const kotNumPromise = getNextKOTNumber();
+        const tokenNumPromise = selectedTable === 'T/A' ? getNextTokenNumber() : Promise.resolve(null);
         // Save order with a temp KOT number immediately so kitchen sees it fast
         const tempOrder = { ...buildOrderObject('paid'), kotNumber: null };
         const firebaseDocId = await saveOrderToFirebase(tempOrder);
@@ -1347,9 +1364,11 @@ function CafePOS() {
         setSyncStatus('connected');
         if (settings.autoPrintBill) { printBill(billOrderForPrint); }
         else if (window.confirm('Print bill?')) { printBill(billOrderForPrint); }
-        // Background: update with real KOT number, save customer, promo, inventory
-        kotNumPromise.then(kotNum => {
-          apiWrite('update', 'orders/' + firebaseDocId, { kotNumber: kotNum }).catch(() => {});
+        // Background: update with real KOT number + token number
+        Promise.all([kotNumPromise, tokenNumPromise]).then(([kotNum, tokenNum]) => {
+          const upd = { kotNumber: kotNum };
+          if (tokenNum) upd.tokenNumber = tokenNum;
+          apiWrite('update', 'orders/' + firebaseDocId, upd).catch(() => {});
         });
         if (customerPhone.length >= 10) saveCustomer(customerPhone, billOrderForPrint);
         if (appliedPromo) {
@@ -1391,6 +1410,7 @@ function CafePOS() {
         });
       } else {
         const kotNumPromise = getNextKOTNumber();
+        const tokenNumPromise = selectedTable === 'T/A' ? getNextTokenNumber() : Promise.resolve(null);
         const tempOrder = { ...buildOrderObject('pending'), kotNumber: null };
         const firebaseDocId = await saveOrderToFirebase(tempOrder);
         if (!firebaseDocId) {
@@ -1405,8 +1425,10 @@ function CafePOS() {
         clearOrderForm();
         setSyncStatus('connected');
         // Background tasks
-        kotNumPromise.then(kotNum => {
-          apiWrite('update', 'orders/' + firebaseDocId, { kotNumber: kotNum }).catch(() => {});
+        Promise.all([kotNumPromise, tokenNumPromise]).then(([kotNum, tokenNum]) => {
+          const upd = { kotNumber: kotNum };
+          if (tokenNum) upd.tokenNumber = tokenNum;
+          apiWrite('update', 'orders/' + firebaseDocId, upd).catch(() => {});
         });
         if (appliedPromo) {
           const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
@@ -1589,7 +1611,7 @@ function CafePOS() {
   const printKOT = (order) => {
     const items = order.items || [];
     const kotNum = order.kotNumber || '—';
-    const tableLabel = !order.tableNumber ? '' : order.tableNumber === 'T/A' ? 'TAKEAWAY' : `TABLE ${order.tableNumber}`;
+    const tableLabel = !order.tableNumber ? '' : order.tableNumber === 'T/A' ? (settings.takeawayLabel || 'TAKEAWAY').toUpperCase() : (settings.tableNames?.[order.tableNumber] || `TABLE ${order.tableNumber}`);
     const now = new Date(order.timestamp || Date.now());
     const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
     const dateStr = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -1601,6 +1623,7 @@ function CafePOS() {
         { text: settings.cafeName, center: true, bold: true },
         { text: `KOT #${kotNum}`, center: true, bold: true },
         ...(tableLabel ? [{ text: tableLabel, center: true, bold: true }] : []),
+        ...(order.tokenNumber ? [{ text: `TOKEN #${order.tokenNumber}`, center: true, bold: true, large: true }] : []),
         ...(order.customerName ? [{ text: order.customerName, center: true }] : []),
         { text: `${dateStr}  ${timeStr}`, center: true },
         { divider: true },
@@ -1943,6 +1966,8 @@ function CafePOS() {
 
   // Dynamic table list — used everywhere instead of hardcoded [1,2,3,4]
   const tableNumbers = useMemo(() => Array.from({ length: settings.tableCount || 10 }, (_, i) => i + 1), [settings.tableCount]);
+  // Custom name for any table number (falls back to T{n})
+  const tName = (t) => t === 'T/A' ? (settings.takeawayLabel || 'Takeaway') : ((settings.tableNames || {})[t] || `T${t}`);
 
   if (!isLoggedIn && !isPublicMenuMode) {
     return (
@@ -1977,7 +2002,7 @@ function CafePOS() {
             <div>
               <div style={{ fontSize: '18px', fontWeight: '900', color: '#FC8019' }}>🧾 Bill #{o.id.toString().slice(-5)}</div>
               <div style={{ fontSize: '12px', color: '#c8e0f4', marginTop: '3px' }}>
-                {o.tableNumber && o.tableNumber !== 'T/A' ? `🪑 Table ${o.tableNumber}` : o.tableNumber === 'T/A' ? '📦 Takeaway' : ''}{o.customerName ? `  ·  ${o.customerName}` : ''}
+                {o.tableNumber && o.tableNumber !== 'T/A' ? `🪑 ${tName(o.tableNumber)}` : o.tableNumber === 'T/A' ? `📦 ${tName('T/A')}` : ''}{o.customerName ? `  ·  ${o.customerName}` : ''}
               </div>
               <div style={{ fontSize: '11px', color: 'rgba(200,224,244,0.5)', marginTop: '2px' }}>{o.date} · {o.time}</div>
             </div>
@@ -2144,7 +2169,7 @@ function CafePOS() {
                 <button onClick={() => setNewMenuOrders(prev => prev.filter(o => o.id !== order.id))} style={{ background: 'rgba(255,255,255,0.25)', border: 'none', color: '#fff', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer', fontSize: '14px', lineHeight: 1 }}>✕</button>
               </div>
               <div style={{ fontSize: '13px', marginBottom: '6px', opacity: 0.9 }}>
-                👤 {order.customerName} {order.tableNumber ? `• ${order.tableNumber === 'T/A' ? '📦 Takeaway' : `Table ${order.tableNumber}`}` : ''}
+                👤 {order.customerName} {order.tableNumber ? `• ${order.tableNumber === 'T/A' ? `📦 ${tName('T/A')}` : tName(order.tableNumber)}` : ''}
               </div>
               <div style={{ fontSize: '12px', marginBottom: '10px', opacity: 0.85 }}>
                 {(order.items || []).map(i => `${i.name} x${i.quantity}`).join(', ')}
@@ -2304,7 +2329,7 @@ function CafePOS() {
                         setSelectedTable(t);
                         setCurrentOrder([]);
                       }} style={{ padding: '8px 18px', background: '#fff', color: '#E64A19', border: 'none', borderRadius: '8px', fontWeight: '900', fontSize: '15px', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.2)' }}>
-                        🔴 Table {t}
+                        🔴 {tName(t)}
                       </button>
                     ))}
                   </div>
@@ -2328,7 +2353,7 @@ function CafePOS() {
                     }}
                       style={{ flex: '1', minWidth: '90px', background: isSelected ? '#FC8019' : occupied ? '#1a0a00' : '#0d1f0d', border: `2px solid ${isSelected ? '#fff' : occupied ? '#FC8019' : '#4CAF50'}`, borderRadius: '12px', padding: '12px 8px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.15s', position: 'relative' }}>
                       <div style={{ fontSize: '22px', marginBottom: '4px' }}>{isSelected ? '✅' : occupied ? '🔴' : '🟢'}</div>
-                      <div style={{ fontSize: '14px', fontWeight: '900', color: '#fff' }}>Table {t}</div>
+                      <div style={{ fontSize: '14px', fontWeight: '900', color: '#fff' }}>{tName(t)}</div>
                       {occupied && !isSelected ? (() => {
                         const activeOrder = orders.find(o => String(o.tableNumber) === String(t) && (o.status||'new') !== 'delivered');
                         const billTotal = activeOrder ? (activeOrder.items||[]).reduce((s,i)=>s+(i.price||0)*(i.quantity||1),0) : 0;
@@ -2353,8 +2378,8 @@ function CafePOS() {
                 <div onClick={() => setSelectedTable(selectedTable === 'T/A' ? null : 'T/A')}
                   style={{ flex: '1', minWidth: '80px', background: selectedTable === 'T/A' ? '#FC8019' : 'rgba(33,150,243,0.12)', border: `2px solid ${selectedTable === 'T/A' ? '#E64A19' : '#2196F3'}`, borderRadius: '10px', padding: '10px', textAlign: 'center', cursor: 'pointer' }}>
                   <div style={{ fontSize: '18px' }}>{selectedTable === 'T/A' ? '✅' : '📦'}</div>
-                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>T/A</div>
-                  <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'T/A' ? '#fff' : '#90CAF9' }}>{selectedTable === 'T/A' ? 'Selected' : 'Takeaway'}</div>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>{tName('T/A')}</div>
+                  <div style={{ fontSize: '11px', fontWeight: '700', color: selectedTable === 'T/A' ? '#fff' : '#90CAF9' }}>{selectedTable === 'T/A' ? 'Selected' : 'Token'}</div>
                 </div>
               </div>
 
@@ -2883,7 +2908,12 @@ function CafePOS() {
                           </div>
                           {order.tableNumber && (
                             <div style={{ background: order.tableNumber === 'T/A' ? 'rgba(33,150,243,0.3)' : 'rgba(156,39,176,0.3)', color: order.tableNumber === 'T/A' ? '#90CAF9' : '#CE93D8', borderRadius: '8px', padding: '4px 12px', fontWeight: '900', fontSize: '14px', border: `1px solid ${order.tableNumber === 'T/A' ? 'rgba(33,150,243,0.5)' : 'rgba(156,39,176,0.5)'}` }}>
-                              {order.tableNumber === 'T/A' ? '📦 Takeaway' : `🪑 Table ${order.tableNumber}`}
+                              {order.tableNumber === 'T/A' ? `📦 ${tName('T/A')}` : `🪑 ${tName(order.tableNumber)}`}
+                            </div>
+                          )}
+                          {order.tokenNumber && (
+                            <div style={{ background: 'rgba(255,213,79,0.2)', color: '#FFD54F', borderRadius: '8px', padding: '4px 12px', fontWeight: '900', fontSize: '16px', border: '1.5px solid #FFD54F' }}>
+                              🎫 Token #{order.tokenNumber}
                             </div>
                           )}
                           <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', fontWeight: '600' }}>{order.customerName}</span>
@@ -3039,7 +3069,7 @@ function CafePOS() {
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '6px' }}>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
                                   <span style={{ fontWeight: '900', color: '#FC8019', fontSize: '14px' }}>#{order.id.toString().slice(-5)}</span>
-                                  {order.tableNumber && <span style={{ fontSize: '11px', background: 'rgba(156,39,176,0.3)', color: '#CE93D8', padding: '2px 8px', borderRadius: '10px', fontWeight: '800' }}>{order.tableNumber === 'T/A' ? '📦 Takeaway' : `🪑 T${order.tableNumber}`}</span>}
+                                  {order.tableNumber && <span style={{ fontSize: '11px', background: 'rgba(156,39,176,0.3)', color: '#CE93D8', padding: '2px 8px', borderRadius: '10px', fontWeight: '800' }}>{order.tableNumber === 'T/A' ? `📦 ${tName('T/A')}` : `🪑 ${tName(order.tableNumber)}`}</span>}
                                   {isPublic && <span style={{ fontSize: '10px', background: 'rgba(33,150,243,0.25)', color: '#90CAF9', padding: '2px 7px', borderRadius: '10px', fontWeight: '700' }}>🌐 Online</span>}
                                   <span style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '10px', fontWeight: '800', background: statusBg, color: statusColor }}>{statusLabel}</span>
                                 </div>
@@ -4931,12 +4961,31 @@ function CafePOS() {
               </div>
               <div style={{ padding: '14px', background: 'rgba(252,128,25,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(252,128,25,0.25)' }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: '#FC8019', marginBottom: '10px' }}>🪑 Table Setup</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                   <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', minWidth: '120px' }}>Number of tables</span>
                   <input type="number" min="1" max="30" value={settings.tableCount || 10} onChange={(e) => { const n = Math.max(1, Math.min(30, parseInt(e.target.value) || 10)); updateSettings({ ...settings, tableCount: n }); }} style={{ width: '80px', padding: '8px', borderRadius: '6px', border: '1.5px solid #FC8019', background: 'rgba(0,0,0,0.4)', color: '#fff', fontWeight: '700', fontSize: '14px', textAlign: 'center' }} />
                   <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>max 30</span>
                 </div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>Changes take effect immediately. Existing occupied tables are preserved.</div>
+                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginBottom: '8px', fontWeight: '600' }}>Custom table names (e.g. T1R, T2L, Window, Counter)</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '8px', marginBottom: '10px' }}>
+                  {tableNumbers.map(t => (
+                    <div key={t} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', fontWeight: '600' }}>Table {t}</span>
+                      <input
+                        type="text" maxLength="6"
+                        placeholder={`T${t}`}
+                        value={(settings.tableNames || {})[t] || ''}
+                        onChange={(e) => { const names = { ...(settings.tableNames || {}), [t]: e.target.value }; updateSettings({ ...settings, tableNames: names }); }}
+                        style={{ padding: '7px 8px', borderRadius: '6px', border: '1.5px solid rgba(252,128,25,0.5)', background: 'rgba(0,0,0,0.4)', color: '#fff', fontWeight: '700', fontSize: '13px', textAlign: 'center', width: '100%', boxSizing: 'border-box' }}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)', minWidth: '120px' }}>📦 Takeaway label</span>
+                  <input type="text" maxLength="12" value={settings.takeawayLabel || 'Takeaway'} onChange={(e) => updateSettings({ ...settings, takeawayLabel: e.target.value })} placeholder="Takeaway" style={{ width: '120px', padding: '7px 8px', borderRadius: '6px', border: '1.5px solid rgba(33,150,243,0.5)', background: 'rgba(0,0,0,0.4)', color: '#fff', fontWeight: '700', fontSize: '13px' }} />
+                </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '8px' }}>Changes take effect immediately everywhere.</div>
               </div>
               <div style={{ padding: '14px', background: 'rgba(33,150,243,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(33,150,243,0.25)' }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: '#90CAF9', marginBottom: '10px' }}>🔐 Staff Login PIN</div>
