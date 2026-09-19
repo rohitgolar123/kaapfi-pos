@@ -567,6 +567,9 @@ function CafePOS() {
   const [kitchenAlertActive, setKitchenAlertActive] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [waitingQueue, setWaitingQueue] = useState([]); // [{id, tokenNum, name, joinedAt}]
+  const [brainLog, setBrainLog] = useState(() => { try { return JSON.parse(localStorage.getItem('kaapfi_brainLog') || '[]'); } catch(e) { return []; } });
+  const [brainStatus, setBrainStatus] = useState('idle'); // idle | running | fixed | alert
+  const [lastBrainRun, setLastBrainRun] = useState(null);
   // ── DataGuard state ──────────────────────────────────────────────────
   const [systemHealth, setSystemHealth] = useState({ status: 'healthy', menuCount: 0, lastCheck: null, lastBackup: null, incidentCount: 0 });
   const [recentIncidents, setRecentIncidents] = useState([]);
@@ -1000,6 +1003,114 @@ function CafePOS() {
     const interval = setInterval(runHealthCheck, 30000);
     return () => clearInterval(interval);
   }, [isLoggedIn, menuItems.length, orders.length]); // eslint-disable-line
+
+  // ── AUTOBIRAIN: self-driving maintenance — runs every 3 minutes ───────
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const addBrainEntry = (action, detail, severity = 'info') => {
+      const entry = { time: new Date().toISOString(), action, detail, severity };
+      setBrainLog(prev => {
+        const next = [entry, ...prev].slice(0, 80);
+        try { localStorage.setItem('kaapfi_brainLog', JSON.stringify(next)); } catch(e) {}
+        return next;
+      });
+    };
+
+    const runAutoBrain = async () => {
+      setBrainStatus('running');
+      setLastBrainRun(new Date().toISOString());
+      let fixes = 0;
+
+      // ── FIX 1: Auto-flush offline queue if online ──────────────────
+      try {
+        const q = JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]');
+        if (q.length > 0 && navigator.onLine) {
+          const remaining = [];
+          for (const item of q) {
+            try {
+              await apiWrite(item.op || 'set', item.path, item.data);
+            } catch(e) {
+              remaining.push(item);
+            }
+          }
+          if (remaining.length < q.length) {
+            localStorage.setItem('kaapfi_offlineQueue', JSON.stringify(remaining));
+            const flushed = q.length - remaining.length;
+            addBrainEntry('QUEUE_FLUSH', `Auto-flushed ${flushed} offline item(s) — ${remaining.length} remaining`, 'info');
+            fixes++;
+          }
+        }
+      } catch(e) {}
+
+      // ── CHECK 2: Duplicate orders (same table, within 8 min, same items count) ──
+      try {
+        const now = Date.now();
+        const recent = orders.filter(o => now - new Date(o.timestamp||0).getTime() < 8 * 60000);
+        const seen = {};
+        const dupes = [];
+        recent.forEach(o => {
+          const key = `${o.tableNumber}|${(o.items||[]).length}`;
+          if (seen[key]) dupes.push(o.id);
+          else seen[key] = o.id;
+        });
+        if (dupes.length > 0) {
+          addBrainEntry('DUPLICATE_ALERT', `Possible duplicate orders detected: IDs ${dupes.join(', ')} — same table+item count within 8 min`, 'warn');
+        }
+      } catch(e) {}
+
+      // ── CHECK 3: Stuck orders (45+ min, not delivered or paid) ──────
+      try {
+        const stuck45 = orders.filter(o => {
+          const paid = (o.paymentStatus||'') === 'paid';
+          const done = ['delivered','served','ready'].includes(o.status||'');
+          if (paid || done) return false;
+          return (Date.now() - new Date(o.timestamp||0).getTime()) > 45 * 60000;
+        });
+        if (stuck45.length > 0) {
+          stuck45.forEach(o => {
+            const ageMin = Math.round((Date.now() - new Date(o.timestamp||0).getTime()) / 60000);
+            addBrainEntry('STUCK_ORDER', `Order #${o.kotNumber||o.id} on ${o.tableNumber} is ${ageMin} min old with no payment`, 'warn');
+          });
+        }
+      } catch(e) {}
+
+      // ── CHECK 4: Orders with missing KOT numbers ──────────────────
+      try {
+        const missingKot = orders.filter(o => !o.kotNumber && (o.paymentStatus||'') !== 'paid');
+        if (missingKot.length > 0) {
+          addBrainEntry('MISSING_KOT', `${missingKot.length} active order(s) missing KOT number — may cause print errors`, 'warn');
+        }
+      } catch(e) {}
+
+      // ── CHECK 5: Firebase connectivity test ───────────────────────
+      try {
+        const pingRes = await fetch(`https://firestore.googleapis.com/v1/projects/kaapfi-pos/databases/(default)/documents/appData/settings?key=AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc`, { method: 'HEAD', signal: AbortSignal.timeout(6000) });
+        if (!pingRes.ok && pingRes.status !== 404) {
+          addBrainEntry('DB_UNREACHABLE', `Firebase ping returned HTTP ${pingRes.status} — database may be unavailable`, 'critical');
+        }
+      } catch(e) {
+        if (navigator.onLine) {
+          addBrainEntry('DB_TIMEOUT', 'Firebase did not respond within 6s — possible outage', 'warn');
+        }
+      }
+
+      // ── CHECK 6: WaitingQueue stale slots (older than 2 hours) ────
+      try {
+        const staleWait = waitingQueue.filter(w => w && (Date.now() - new Date(w.joinedAt||0).getTime()) > 2 * 3600000);
+        if (staleWait.length > 0) {
+          addBrainEntry('WAITING_STALE', `${staleWait.length} waiting token(s) sitting for 2+ hours — consider seating or removing`, 'warn');
+        }
+      } catch(e) {}
+
+      setBrainStatus(fixes > 0 ? 'fixed' : 'idle');
+      setTimeout(() => setBrainStatus('idle'), 8000);
+    };
+
+    runAutoBrain();
+    const brainInterval = setInterval(runAutoBrain, 3 * 60000);
+    return () => clearInterval(brainInterval);
+  }, [isLoggedIn, orders.length, waitingQueue.length]); // eslint-disable-line
 
   // ── OFFLINE QUEUE: flush queued orders when internet returns ─────────
   const [queueCount, setQueueCount] = React.useState(0);
@@ -2241,12 +2352,14 @@ function CafePOS() {
               <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff' }}>{syncStatus === 'connected' ? 'Live' : syncStatus === 'syncing' ? 'Syncing…' : 'Offline'}</span>
               {queueCount > 0 && <span style={{ fontSize: '10px', fontWeight: '800', background: '#FF7043', color: '#fff', borderRadius: '8px', padding: '1px 6px', marginLeft: '2px' }} title="Orders saved locally — will sync when online">{queueCount} queued</span>}
             </div>
-            {/* DataGuard health badge */}
-            <button onClick={() => { setActiveTab('monitor'); }} title="System Health — click to open Monitor" style={{ background: systemHealth.status === 'healthy' ? 'rgba(105,240,174,0.2)' : systemHealth.status === 'critical' ? 'rgba(239,83,80,0.3)' : 'rgba(255,213,79,0.2)', border: 'none', padding: '6px 10px', borderRadius: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            {/* DataGuard + AutoBrain health badge */}
+            <button onClick={() => { setActiveTab('monitor'); }} title="DataGuard + AutoBrain — click to open Monitor" style={{ background: systemHealth.status === 'healthy' ? 'rgba(105,240,174,0.2)' : systemHealth.status === 'critical' ? 'rgba(239,83,80,0.3)' : 'rgba(255,213,79,0.2)', border: 'none', padding: '6px 10px', borderRadius: '16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: systemHealth.status === 'healthy' ? '#69F0AE' : systemHealth.status === 'critical' ? '#EF5350' : '#FFD54F', boxShadow: systemHealth.status !== 'healthy' ? '0 0 8px currentColor' : 'none' }} />
               <span style={{ fontSize: '10px', fontWeight: '800', color: '#fff' }}>
-                {systemHealth.status === 'healthy' ? '🛡 Guard' : systemHealth.status === 'critical' ? '🚨 Alert' : '⚠ Watch'}
+                {systemHealth.status === 'healthy' ? '🛡🧠' : systemHealth.status === 'critical' ? '🚨 Alert' : '⚠ Watch'}
               </span>
+              {brainStatus === 'running' && <span style={{ fontSize: '9px', color: '#CE93D8', fontWeight: '800' }}>scanning…</span>}
+              {brainStatus === 'fixed' && <span style={{ fontSize: '9px', color: '#69F0AE', fontWeight: '800' }}>fixed!</span>}
             </button>
             {syncStatus === 'offline' && (
               <button onClick={forceRefresh} style={{ background: '#EF5350', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '16px', cursor: 'pointer', fontSize: '11px', fontWeight: '800' }}>↺ Retry</button>
@@ -4964,15 +5077,29 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
                   <div style={{ fontSize: '22px' }}>🛡</div>
                   <div>
-                    <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff' }}>DataGuard — Self-Healing System</div>
+                    <div style={{ fontSize: '16px', fontWeight: '800', color: '#fff' }}>DataGuard + AutoBrain</div>
                     <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
-                      Last check: {systemHealth.lastCheck ? new Date(systemHealth.lastCheck).toLocaleTimeString('en-IN') : 'Pending…'}
-                      {' · '}Menu items: {systemHealth.menuCount}
-                      {' · '}Checks every 30s
+                      Guard check: {systemHealth.lastCheck ? new Date(systemHealth.lastCheck).toLocaleTimeString('en-IN') : 'Pending…'}
+                      {' · '}Brain: {lastBrainRun ? new Date(lastBrainRun).toLocaleTimeString('en-IN') : 'Pending…'}
+                      {' · '}Menu: {systemHealth.menuCount} items
                     </div>
                   </div>
                   <div style={{ marginLeft: 'auto', padding: '6px 14px', borderRadius: '20px', fontWeight: '800', fontSize: '12px', background: systemHealth.status === 'healthy' ? 'rgba(105,240,174,0.15)' : systemHealth.status === 'critical' ? 'rgba(239,83,80,0.2)' : 'rgba(255,213,79,0.15)', color: systemHealth.status === 'healthy' ? '#69F0AE' : systemHealth.status === 'critical' ? '#EF5350' : '#FFD54F', border: `1px solid ${systemHealth.status === 'healthy' ? 'rgba(105,240,174,0.4)' : systemHealth.status === 'critical' ? 'rgba(239,83,80,0.4)' : 'rgba(255,213,79,0.4)'}` }}>
                     {systemHealth.status === 'healthy' ? '✅ All Healthy' : systemHealth.status === 'critical' ? '🚨 Critical' : '⚠ Degraded'}
+                  </div>
+                </div>
+
+                {/* AutoBrain status pill */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', padding: '8px 14px', background: 'rgba(156,39,176,0.12)', border: '1px solid rgba(206,147,216,0.3)', borderRadius: '10px' }}>
+                  <div style={{ fontSize: '18px', animation: brainStatus === 'running' ? 'spin 1s linear infinite' : 'none' }}>🧠</div>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '800', color: '#CE93D8' }}>AutoBrain</div>
+                    <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.5)' }}>
+                      {brainStatus === 'running' ? 'Scanning system…' : brainStatus === 'fixed' ? '✅ Auto-fixed issues' : `${brainLog.length} actions logged · runs every 3 min`}
+                    </div>
+                  </div>
+                  <div style={{ marginLeft: 'auto', fontSize: '11px', fontWeight: '700', color: brainStatus === 'running' ? '#CE93D8' : brainStatus === 'fixed' ? '#69F0AE' : 'rgba(255,255,255,0.4)' }}>
+                    {brainStatus === 'running' ? '● Scanning' : brainStatus === 'fixed' ? '● Fixed' : '● Standby'}
                   </div>
                 </div>
 
@@ -4984,7 +5111,11 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                     { icon: '⚡', label: 'Auto-Restore', desc: 'Restores from last 7 days backup', active: true },
                     { icon: '📝', label: 'Incident Log', desc: `${recentIncidents.length} events logged`, active: true },
                     { icon: '🔄', label: 'Merge Protection', desc: 'Never overwrites defaults', active: true },
-                    { icon: '📶', label: 'Offline Queue', desc: 'IndexedDB persistence active', active: true },
+                    { icon: '📶', label: 'Offline Queue', desc: 'Auto-flush when reconnected', active: true },
+                    { icon: '🧬', label: 'Duplicate Detect', desc: 'Same table+items within 8 min', active: true },
+                    { icon: '⏱', label: 'Stuck Order Alert', desc: 'Flags orders 45+ min unpaid', active: true },
+                    { icon: '🔗', label: 'DB Ping', desc: 'Firebase live every 3 min', active: true },
+                    { icon: '🎫', label: 'Wait Queue Watch', desc: 'Stale tokens after 2 hours', active: true },
                   ].map((cap, i) => (
                     <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '12px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                       <div style={{ fontSize: '20px' }}>{cap.icon}</div>
@@ -5052,6 +5183,37 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                         {inc.resolved && (
                           <span style={{ fontSize: '10px', color: 'rgba(105,240,174,0.6)', fontWeight: '700' }}>✓ Resolved</span>
                         )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── AUTOBIRAIN ACTIVITY LOG ──────────────────────────── */}
+              <div style={{ background: 'linear-gradient(135deg, #1A0A2E 0%, #12022A 100%)', border: '1px solid rgba(206,147,216,0.25)', borderRadius: '12px', padding: '16px', marginTop: '20px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div>
+                    <div style={{ fontSize: '15px', fontWeight: '800', color: '#CE93D8' }}>🧠 AutoBrain Activity Log ({brainLog.length})</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)' }}>Auto-fixes, alerts, and DB health checks — last 80 entries</div>
+                  </div>
+                  <button onClick={() => { setBrainLog([]); localStorage.removeItem('kaapfi_brainLog'); }} style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', cursor: 'pointer', fontSize: '11px' }}>Clear</button>
+                </div>
+                {brainLog.length === 0 ? (
+                  <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: '13px', padding: '12px 0' }}>Brain is watching… no actions taken yet.</div>
+                ) : (
+                  <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                    {brainLog.map((entry, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ fontSize: '14px', marginTop: '1px', flexShrink: 0 }}>
+                          {entry.severity === 'critical' ? '🔴' : entry.severity === 'warn' ? '🟡' : '🟢'}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <span style={{ fontSize: '11px', fontWeight: '800', color: entry.severity === 'critical' ? '#EF5350' : entry.severity === 'warn' ? '#FFD54F' : '#CE93D8' }}>{entry.action}</span>
+                            <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>{entry.time ? new Date(entry.time).toLocaleTimeString('en-IN') : ''}</span>
+                          </div>
+                          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.7)', marginTop: '2px', wordBreak: 'break-word' }}>{entry.detail}</div>
+                        </div>
                       </div>
                     ))}
                   </div>
