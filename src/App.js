@@ -507,7 +507,7 @@ function CafePOS() {
   const [newCategoryInput, setNewCategoryInput] = useState('');
   const [lockedTable, setLockedTable] = useState(null); // set from QR URL ?table=X, never changed by customer
   const [activeTableSession, setActiveTableSession] = useState(null); // existing orders on locked table
-  const [staffMode, setStaffMode] = useState(false);
+  const [staffMode, setStaffMode] = useState(true);
   const [managerPinInput, setManagerPinInput] = useState('');
   const [showManagerPinDialog, setShowManagerPinDialog] = useState(false);
   const [viewModeOverride, setViewModeOverride] = useState(() => localStorage.getItem('kaapfi_viewMode') || 'auto');
