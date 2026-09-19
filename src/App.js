@@ -35,6 +35,7 @@ const defaultSettings = {
   receiptSize: "80mm",
   preventNegativeStock: false,
   autoPrintKOT: false,
+  autoPrintBill: false,
 };
 
 const defaultMenu = [
@@ -606,7 +607,8 @@ export default function CafePOS() {
     return false;
   };
 
-  // Minimal ESC/POS — only universally-safe commands so no binary garbage prints
+  // ESC/POS builder — safe commands only, no garbage risk
+  // large:true = GS ! double-height (GS is 0x1D, non-printable, safe on all printers)
   const buildPrintBytes = (lines) => {
     const ESC = 0x1B, GS = 0x1D, LF = 0x0A;
     const bytes = [];
@@ -615,16 +617,18 @@ export default function CafePOS() {
       for (let i = 0; i < safe.length; i++) bytes.push(safe.charCodeAt(i));
       bytes.push(LF);
     };
-    bytes.push(ESC, 0x40); // ESC @ = init / reset
+    bytes.push(ESC, 0x40); // ESC @ = init
     for (const l of lines) {
-      if (l.divider) { txt('--------------------------------'); continue; }
-      bytes.push(ESC, 0x61, l.center ? 0x01 : 0x00); // ESC a = align
-      if (l.bold) bytes.push(ESC, 0x45, 0x01);        // ESC E = bold on
+      if (l.divider) { bytes.push(ESC, 0x61, 0x00); txt('--------------------------------'); continue; }
+      bytes.push(ESC, 0x61, l.center ? 0x01 : 0x00); // align
+      if (l.bold)  bytes.push(ESC, 0x45, 0x01);       // bold on
+      if (l.large) bytes.push(GS,  0x21, 0x10);        // double height (safe: GS is non-printable)
       txt(l.text || '');
-      if (l.bold) bytes.push(ESC, 0x45, 0x00);        // ESC E = bold off
+      if (l.large) bytes.push(GS,  0x21, 0x00);        // reset size
+      if (l.bold)  bytes.push(ESC, 0x45, 0x00);        // bold off
     }
-    bytes.push(LF, LF, LF, LF);
-    bytes.push(GS, 0x56, 0x01); // GS V 1 = cut
+    bytes.push(LF, LF, LF);
+    bytes.push(GS, 0x56, 0x42, 0x00); // GS V B 0 = full cut
     return new Uint8Array(bytes);
   };
 
@@ -1215,13 +1219,16 @@ export default function CafePOS() {
         if (selectedTable && selectedTable !== 'T/A') {
           const u = { ...tableStatus, [selectedTable]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u);
         }
+        const billOrderForPrint = { ...tempOrder, firebaseDocId };
         clearOrderForm();
         setSyncStatus('connected');
+        if (settings.autoPrintBill) { printBill(billOrderForPrint); }
+        else if (window.confirm('Print bill?')) { printBill(billOrderForPrint); }
         // Background: update with real KOT number, save customer, promo, inventory
         kotNumPromise.then(kotNum => {
           apiWrite('update', 'orders/' + firebaseDocId, { kotNumber: kotNum }).catch(() => {});
         });
-        if (customerPhone.length >= 10) saveCustomer(customerPhone, { ...tempOrder, firebaseDocId });
+        if (customerPhone.length >= 10) saveCustomer(customerPhone, billOrderForPrint);
         if (appliedPromo) {
           const updatedPromos = promoCodes.map(p => p.code === appliedPromo.code ? { ...p, usedCount: (p.usedCount || 0) + 1 } : p);
           savePromosToCloud(updatedPromos);
@@ -1234,6 +1241,8 @@ export default function CafePOS() {
       }
       clearOrderForm();
       setSyncStatus('connected');
+      if (settings.autoPrintBill) { printBill(); }
+      else if (window.confirm('Print bill?')) { printBill(); }
     } catch (e) {
       console.error('completeOrder error:', e);
       alert('❌ Something went wrong saving the order. Please try again.');
@@ -1476,7 +1485,7 @@ export default function CafePOS() {
           const sops = (menuSOPs[i.name] || []);
           const sopText = sops.length > 0 ? sops.map(r => `  ${r.ingredient} ${r.quantity * (i.quantity || 1)}`).join(' ') : null;
           return [
-            { text: `x${i.quantity || 1}  ${i.name}`, bold: true },
+            { text: `x${i.quantity || 1}  ${i.name}`, bold: true, large: true },
             ...(sopText ? [{ text: sopText }] : []),
           ];
         }),
@@ -2804,6 +2813,10 @@ export default function CafePOS() {
                           <button onClick={() => printKOT(order)}
                             style={{ padding: '9px 14px', background: 'rgba(105,240,174,0.12)', color: '#69F0AE', border: '1.5px solid #69F0AE', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
                             🖨️ KOT
+                          </button>
+                          <button onClick={() => printBill(order)}
+                            style={{ padding: '9px 14px', background: 'rgba(105,240,174,0.12)', color: '#69F0AE', border: '1.5px solid #69F0AE', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '800' }}>
+                            🖨️ Bill
                           </button>
                           {!isPaid && (
                             <button onClick={async () => {
@@ -4692,6 +4705,15 @@ export default function CafePOS() {
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>🖨️ Auto-print KOT on new order</div>
                     <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>Automatically opens print dialog on the kitchen device when a new order arrives. Allow popups first.</div>
+                  </div>
+                </label>
+              </div>
+              <div style={{ padding: '12px', background: 'rgba(105,240,174,0.08)', borderRadius: '8px', marginTop: '10px', border: '1px solid rgba(105,240,174,0.25)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={settings.autoPrintBill || false} onChange={(e) => updateSettings({ ...settings, autoPrintBill: e.target.checked })} style={{ width: '18px', height: '18px' }} />
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#fff' }}>🧾 Auto-print Bill on complete order</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>Skip the "Print bill?" prompt — bill prints immediately when order is completed.</div>
                   </div>
                 </label>
               </div>
