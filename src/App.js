@@ -2744,6 +2744,67 @@ function CafePOS() {
                 ))}
               </div>
             )}
+
+            {/* ── DAY-END CLOSING REPORT ── */}
+            {(() => {
+              const dateLabel = new Date(summaryDate).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+              const cashOrders = selectedDateOrders.filter(o => o.paymentMethod === 'cash').length;
+              const upiOrders = selectedDateOrders.filter(o => o.paymentMethod === 'upi').length;
+              const cardOrders = selectedDateOrders.filter(o => o.paymentMethod === 'card').length;
+              const dineIn = selectedDateOrders.filter(o => o.tableNumber && o.tableNumber !== 'T/A' && o.tableNumber !== 'WAIT').length;
+              const takeaway = selectedDateOrders.filter(o => o.tableNumber === 'T/A').length;
+              const waiting = selectedDateOrders.filter(o => o.tableNumber === 'WAIT').length;
+
+              // Category breakdown
+              const catMap = {};
+              selectedDateOrders.forEach(o => (o.items||[]).forEach(item => {
+                const cat = item.category || 'Other';
+                catMap[cat] = (catMap[cat] || 0) + (item.price * item.quantity);
+              }));
+              const topCats = Object.entries(catMap).sort((a,b) => b[1]-a[1]).slice(0, 5);
+
+              const msg =
+`🏪 *Kaapfi 90's — Day-End Report*
+📅 ${dateLabel}
+${'─'.repeat(28)}
+💰 *REVENUE*
+  Cash   : ₹${cashReceived.toFixed(0)} (${cashOrders} orders)
+  UPI    : ₹${upiReceived.toFixed(0)} (${upiOrders} orders)
+  Card   : ₹${cardReceived.toFixed(0)} (${cardOrders} orders)
+  *Total  : ₹${totalReceived.toFixed(0)} (${selectedDateOrders.length} orders)*
+${'─'.repeat(28)}
+🍽️ *ORDER TYPE*
+  Dine-In  : ${dineIn}
+  Takeaway : ${takeaway}
+  Waiting  : ${waiting}
+${'─'.repeat(28)}
+💸 *EXPENSES*
+  Cash : ₹${cashExpenses.toFixed(0)}
+  UPI  : ₹${upiExpenses.toFixed(0)}
+  *Total: ₹${totalExpenses.toFixed(0)}*
+${'─'.repeat(28)}
+📊 *CLOSING SUMMARY*
+  Net Cash in Hand : ₹${netCashInHand.toFixed(0)}
+  *Net Profit       : ₹${netProfit.toFixed(0)}*
+${'─'.repeat(28)}
+${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: ₹${v.toFixed(0)}`).join('\n')}\n${'─'.repeat(28)}\n` : ''}✅ Day closed by manager`;
+
+              const sendWhatsApp = () => {
+                window.open(`https://wa.me/919307189776?text=${encodeURIComponent(msg)}`, '_blank');
+              };
+
+              return (
+                <div style={{ background: '#0d1f35', border: '2px solid #FC8019', borderRadius: '14px', padding: '20px', marginTop: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ fontSize: '16px', fontWeight: '900', color: '#FC8019' }}>📊 Day-End Closing Report</div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button onClick={sendWhatsApp} style={{ padding: '10px 20px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: '14px' }}>📲 Send WhatsApp</button>
+                    </div>
+                  </div>
+                  <pre style={{ background: '#0A1929', borderRadius: '10px', padding: '16px', fontSize: '12px', color: '#c8e0f4', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: '1.7', margin: 0 }}>{msg}</pre>
+                </div>
+              );
+            })()}
           </div>
         )}
 
