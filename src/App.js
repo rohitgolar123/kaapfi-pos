@@ -280,17 +280,22 @@ async function trackUpsellEvent(sessionId, eventType, itemId, cartValue) {
 async function apiWrite(op, path, data, retries = 3) {
   let lastErr;
   for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000); // 10s timeout per attempt
     try {
       const r = await fetch('/api/write', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ op, path, data })
+        body: JSON.stringify({ op, path, data }),
+        signal: controller.signal,
       });
+      clearTimeout(timer);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     } catch (e) {
+      clearTimeout(timer);
       lastErr = e;
-      if (i < retries - 1) await new Promise(res => setTimeout(res, 1000 * Math.pow(2, i)));
+      if (i < retries - 1) await new Promise(res => setTimeout(res, 800 * (i + 1)));
     }
   }
   throw lastErr;
@@ -736,14 +741,17 @@ function CafePOS() {
     setSyncStatus('syncing');
 
     const todayISO = () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString(); };
+    let consecutiveFails = 0; // only mark offline after 3 failures in a row
 
     // ── Fast poll: orders via Vercel API proxy every 5 seconds ────────────
     // Requests go to same domain as the app — bypasses any Firebase network blocks.
     const pollFast = async () => {
       try {
-        const r = await fetch('/api/orders?t=' + Date.now());
-        if (!r.ok) throw new Error('api error');
+        const r = await fetch('/api/orders?t=' + Date.now(), { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) throw new Error('api error ' + r.status);
         const { orders: todayOrders } = await r.json();
+
+        consecutiveFails = 0; // reset on success
 
         setOrders(prev => {
           const older = prev.filter(o => (o.timestamp || '') < todayISO());
@@ -768,14 +776,18 @@ function CafePOS() {
         // Cache orders locally so they survive a reload even if Firebase is briefly unreachable
         try { localStorage.setItem('kaapfi_ordersCache', JSON.stringify({ orders: todayOrders, at: Date.now() })); } catch (e) {}
       } catch (e) {
-        setSyncStatus('offline');
-        // Serve from local cache if available (last known good state)
-        try {
-          const cache = JSON.parse(localStorage.getItem('kaapfi_ordersCache') || 'null');
-          if (cache && Date.now() - cache.at < 600000 && Array.isArray(cache.orders) && cache.orders.length > 0) {
-            setOrders(prev => prev.length === 0 ? cache.orders : prev);
-          }
-        } catch (ce) {}
+        consecutiveFails++;
+        // Only flip to offline after 3 straight failures — avoids false alarms on a single slow request
+        if (consecutiveFails >= 3) {
+          setSyncStatus('offline');
+          // Serve from local cache if available (last known good state)
+          try {
+            const cache = JSON.parse(localStorage.getItem('kaapfi_ordersCache') || 'null');
+            if (cache && Date.now() - cache.at < 600000 && Array.isArray(cache.orders) && cache.orders.length > 0) {
+              setOrders(prev => prev.length === 0 ? cache.orders : prev);
+            }
+          } catch (ce) {}
+        }
       }
     };
 
