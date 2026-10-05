@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot, orderBy } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, doc, setDoc, getDoc, getDocFromServer, updateDoc, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc",
@@ -13,7 +13,11 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// Persistent cache: data survives reloads offline; undefined fields are dropped instead of throwing
+const db = initializeFirestore(app, {
+  ignoreUndefinedProperties: true,
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
 const CAFE_PASSWORD = "9923022925";
 const DELETE_PASSWORD = "9923022925";
 
@@ -276,47 +280,63 @@ async function trackUpsellEvent(sessionId, eventType, itemId, cartValue) {
   try { await addDoc(collection(db, "upsellEvents"), { sessionId, eventType, itemId: itemId || null, cartValue, timestamp: new Date().toISOString(), date: new Date().toISOString().split('T')[0] }); } catch (e) {}
 }
 
-// Auto-retry with exponential backoff: 3 attempts → 1s, 2s, 4s gaps
-async function apiWrite(op, path, data, retries = 3) {
-  let lastErr;
-  for (let i = 0; i < retries; i++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000); // 10s timeout per attempt
-    try {
-      const r = await fetch('/api/write', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ op, path, data }),
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    } catch (e) {
-      clearTimeout(timer);
-      lastErr = e;
-      if (i < retries - 1) await new Promise(res => setTimeout(res, 800 * (i + 1)));
-    }
-  }
-  throw lastErr;
+// SDK writes never reject while offline — they wait for the server. Cap the wait so the UI never freezes;
+// the SDK keeps the pending write and delivers it on reconnect.
+const WRITE_TIMEOUT = 'write-timeout';
+function withTimeout(promise, ms = 8000) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error(WRITE_TIMEOUT)), ms))]);
 }
 
-// Layer 2: if Firebase unreachable after 3 retries → save to offline queue
-// Queue auto-flushes when internet returns (see flushOfflineQueue below)
+// Direct Firebase SDK writes (no Vercel proxy hop). Same signature as before: op = add | set | update | delete
+async function apiWrite(op, path, data) {
+  const parts = path.split('/');
+  if (op === 'add') {
+    const ref = doc(collection(db, parts[0]));
+    await withTimeout(setDoc(ref, data)).catch(e => { if (e.message !== WRITE_TIMEOUT) throw e; });
+    return { id: ref.id, ok: true };
+  }
+  const ref = doc(db, parts[0], parts[1]);
+  const p = op === 'set' ? setDoc(ref, data) : op === 'update' ? updateDoc(ref, data) : op === 'delete' ? deleteDoc(ref) : null;
+  if (!p) throw new Error('Unknown op: ' + op);
+  await withTimeout(p).catch(e => { if (e.message !== WRITE_TIMEOUT) throw e; });
+  return { ok: true };
+}
+
+// ID is assigned up front, so retries/flushes overwrite the same doc — never a duplicate order
 async function saveOrderToFirebase(order) {
+  const ref = doc(collection(db, 'orders'));
+  const orderData = { ...order, timestamp: new Date().toISOString() };
   try {
-    const result = await apiWrite('add', 'orders', { ...order, timestamp: new Date().toISOString() });
-    return result.id || null;
+    await withTimeout(setDoc(ref, orderData));
   } catch (e) {
-    console.error('[saveOrderToFirebase] All retries failed — saving to offline queue');
+    // Backup copy in localStorage in case the tab closes before the SDK delivers it
     try {
       const queue = JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]');
-      const localId = 'local_' + Date.now();
-      queue.push({ ...order, timestamp: new Date().toISOString(), _queuedAt: Date.now(), _localId: localId });
+      queue.push({ ...orderData, _queuedAt: Date.now(), _docId: ref.id });
       localStorage.setItem('kaapfi_offlineQueue', JSON.stringify(queue));
-      return localId; // non-null means order was captured — flow continues normally
-    } catch (qErr) { return null; }
+    } catch (qErr) {}
   }
+  return ref.id;
+}
+
+// Writes queued orders that never reached Firebase. Skips any that already exist (so a later "paid" update is never overwritten).
+async function flushOrderQueue() {
+  let queue;
+  try { queue = JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]'); } catch (e) { return { synced: 0, remaining: 0 }; }
+  if (queue.length === 0) return { synced: 0, remaining: 0 };
+  const remaining = [];
+  let synced = 0;
+  for (const item of queue) {
+    const { _queuedAt, _localId, _docId, ...order } = item;
+    try {
+      const ref = _docId ? doc(db, 'orders', _docId) : doc(collection(db, 'orders'));
+      const existing = await withTimeout(getDoc(ref), 6000);
+      if (!existing.exists()) await withTimeout(setDoc(ref, order), 6000);
+      synced++;
+    } catch (e) { remaining.push(item); }
+  }
+  localStorage.setItem('kaapfi_offlineQueue', JSON.stringify(remaining));
+  return { synced, remaining: remaining.length };
 }
 
 async function deleteOrderFromFirebase(docId) { try { await deleteDoc(doc(db, "orders", docId)); return true; } catch (e) { return false; } }
@@ -733,35 +753,35 @@ function CafePOS() {
     }
   }, []);
 
-  // POLLING SYNC - fetches fresh data from Firebase every few seconds.
-  // No WebSockets, no onSnapshot — works on every device, every network, guaranteed.
+  // REAL-TIME SYNC — Firebase onSnapshot listeners. No polling, no delay.
+  // Data arrives instantly when anything changes in Firebase.
   useEffect(() => {
     if (!isLoggedIn) return;
 
     setSyncStatus('syncing');
 
+    // ── Menu images from localStorage ──────────────────────────────────────
+    try {
+      const stored = JSON.parse(localStorage.getItem('menuItemImages') || '{}');
+      setMenuItemImages(stored);
+    } catch (e) {}
+
     const todayISO = () => { const d = new Date(); d.setHours(0,0,0,0); return d.toISOString(); };
-    let consecutiveFails = 0; // only mark offline after 3 failures in a row
 
-    // ── Fast poll: orders via Vercel API proxy every 5 seconds ────────────
-    // Requests go to same domain as the app — bypasses any Firebase network blocks.
-    const pollFast = async () => {
-      try {
-        const r = await fetch('/api/orders?t=' + Date.now(), { signal: AbortSignal.timeout(8000) });
-        if (!r.ok) throw new Error('api error ' + r.status);
-        const { orders: todayOrders } = await r.json();
-
-        consecutiveFails = 0; // reset on success
-
+    // ── ORDERS: real-time listener — fires instantly on any order change ───
+    const ordersQuery = query(collection(db, 'orders'), where('timestamp', '>=', todayISO()));
+    const unsubOrders = onSnapshot(ordersQuery, { includeMetadataChanges: true },
+      (snap) => {
+        const todayOrders = [];
+        snap.forEach(d => todayOrders.push({ id: d.id, ...d.data(), firebaseDocId: d.id }));
+        todayOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         setOrders(prev => {
-          const older = prev.filter(o => (o.timestamp || '') < todayISO());
-          const merged = [...older, ...todayOrders];
-          merged.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-          return merged;
+          const start = todayISO();
+          return [...prev.filter(o => (o.timestamp || '') < start), ...todayOrders];
         });
 
         const activeTableNums = new Set(
-          todayOrders.filter(o => (o.status || '') !== 'delivered' && o.tableNumber && o.tableNumber !== 'T/A')
+          todayOrders.filter(o => (o.status || '') !== 'delivered' && o.tableNumber && o.tableNumber !== 'T/A' && o.tableNumber !== 'WAIT')
                      .map(o => String(o.tableNumber))
         );
         setTableStatus(prev => {
@@ -772,113 +792,107 @@ function CafePOS() {
           return next;
         });
 
-        setSyncStatus('connected');
-        // Cache orders locally so they survive a reload even if Firebase is briefly unreachable
+        setSyncStatus(!snap.metadata.fromCache ? 'connected' : navigator.onLine ? 'syncing' : 'offline');
         try { localStorage.setItem('kaapfi_ordersCache', JSON.stringify({ orders: todayOrders, at: Date.now() })); } catch (e) {}
-      } catch (e) {
-        consecutiveFails++;
-        // Only flip to offline after 3 straight failures — avoids false alarms on a single slow request
-        if (consecutiveFails >= 3) {
-          setSyncStatus('offline');
-          // Serve from local cache if available (last known good state)
-          try {
-            const cache = JSON.parse(localStorage.getItem('kaapfi_ordersCache') || 'null');
-            if (cache && Date.now() - cache.at < 600000 && Array.isArray(cache.orders) && cache.orders.length > 0) {
-              setOrders(prev => prev.length === 0 ? cache.orders : prev);
-            }
-          } catch (ce) {}
-        }
+      },
+      (err) => {
+        console.error('[Sync] Orders listener error:', err);
+        setSyncStatus('offline');
+        try {
+          const cache = JSON.parse(localStorage.getItem('kaapfi_ordersCache') || 'null');
+          if (cache && Array.isArray(cache.orders) && cache.orders.length > 0) setOrders(cache.orders);
+        } catch (ce) {}
       }
-    };
+    );
 
-    // ── Slow poll: menu, settings, etc. via Vercel API proxy every 30s ───
-    const pollSlow = async () => {
-      try {
-        const r = await fetch('/api/appdata?t=' + Date.now());
-        if (!r.ok) return;
-        const d = await r.json();
-
-        // MENU
-        if (d.menu) {
-          const cloudItems = d.menu.items || [];
-          if (cloudItems.length > 0) {
-            const cloudIds = new Set(cloudItems.map(i => String(i.id)));
-            const missing = defaultMenu.filter(i => !cloudIds.has(String(i.id)));
-            setMenuItems(missing.length > 0 ? [...cloudItems, ...missing] : cloudItems);
-          } else setMenuItems(defaultMenu);
+    // ── MENU: real-time listener ──────────────────────────────────────────
+    const unsubMenu = onSnapshot(doc(db, 'appData', 'menu'), (snap) => {
+      if (snap.exists()) {
+        const cloudItems = snap.data().items || [];
+        if (cloudItems.length > 0) {
+          const cloudIds = new Set(cloudItems.map(i => String(i.id)));
+          const missing = defaultMenu.filter(i => !cloudIds.has(String(i.id)));
+          setMenuItems(missing.length > 0 ? [...cloudItems, ...missing] : cloudItems);
         } else setMenuItems(defaultMenu);
+      } else setMenuItems(defaultMenu);
+    }, () => {});
 
-        // SETTINGS
-        if (d.settings?.data) setSettings({ ...defaultSettings, ...d.settings.data });
+    // ── SETTINGS: real-time listener ─────────────────────────────────────
+    const unsubSettings = onSnapshot(doc(db, 'appData', 'settings'), (snap) => {
+      if (snap.exists() && snap.data().data) setSettings({ ...defaultSettings, ...snap.data().data });
+    }, () => {});
 
-        // INVENTORY
-        if (d.inventory?.items?.length > 0) setInventory(d.inventory.items);
-        else setInventory(defaultInventory);
+    // ── INVENTORY: real-time listener ────────────────────────────────────
+    const unsubInventory = onSnapshot(doc(db, 'appData', 'inventory'), (snap) => {
+      if (snap.exists()) setInventory(snap.data().items?.length > 0 ? snap.data().items : defaultInventory);
+      else setInventory(defaultInventory);
+    }, () => {});
 
-        // EXPENSES
-        if (d.expenses?.items) setExpenses(d.expenses.items);
+    // ── EXPENSES: real-time listener ──────────────────────────────────────
+    const unsubExpenses = onSnapshot(doc(db, 'appData', 'expenses'), (snap) => {
+      if (snap.exists() && snap.data().items) setExpenses(snap.data().items);
+    }, () => {});
 
-        // PROMOS
-        if (d.promos?.items) setPromoCodes(d.promos.items);
+    // ── PROMOS: real-time listener ────────────────────────────────────────
+    const unsubPromos = onSnapshot(doc(db, 'appData', 'promos'), (snap) => {
+      if (snap.exists() && snap.data().items) setPromoCodes(snap.data().items);
+    }, () => {});
 
-        // CATEGORIES
-        const defaultCats = [...new Set(defaultMenu.map(i => i.category))];
-        if (d.categories?.items) {
-          const merged = [...new Set([...defaultCats, ...d.categories.items])];
-          setCustomCategories(merged);
-          localStorage.setItem('customCategories', JSON.stringify(merged));
-        } else setCustomCategories(defaultCats);
+    // ── CATEGORIES: real-time listener ────────────────────────────────────
+    const defaultCats = [...new Set(defaultMenu.map(i => i.category))];
+    const unsubCategories2 = onSnapshot(doc(db, 'appData', 'categories'), (snap) => {
+      if (snap.exists() && snap.data().items) {
+        const merged = [...new Set([...defaultCats, ...snap.data().items])];
+        setCustomCategories(merged);
+        localStorage.setItem('customCategories', JSON.stringify(merged));
+      } else setCustomCategories(defaultCats);
+    }, () => {});
 
-        // KOT COUNTER
-        const kotToday = getISTDateStr();
-        if (d.kotCounter) {
-          if (d.kotCounter.date !== kotToday) {
-            setDoc(doc(db, "appData", "kotCounter"), { count: 0, date: kotToday }).catch(() => {});
-            setKotDailyCounter(0);
-          } else setKotDailyCounter(d.kotCounter.count || 0);
-        } else {
-          setDoc(doc(db, "appData", "kotCounter"), { count: 0, date: kotToday }).catch(() => {});
-        }
+    // ── KOT COUNTER: real-time listener ──────────────────────────────────
+    const kotToday = getISTDateStr();
+    const unsubKot = onSnapshot(doc(db, 'appData', 'kotCounter'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.date !== kotToday) {
+          setDoc(doc(db, 'appData', 'kotCounter'), { count: 0, date: kotToday }).catch(() => {});
+          setKotDailyCounter(0);
+        } else setKotDailyCounter(d.count || 0);
+      } else {
+        setDoc(doc(db, 'appData', 'kotCounter'), { count: 0, date: kotToday }).catch(() => {});
+      }
+    }, () => {});
 
-        // SOPs
-        if (d.sops?.data) setMenuSOPs(d.sops.data);
-        else saveSOPsToCloud(defaultSOPs).catch(() => {});
+    // ── SOPs: real-time listener ──────────────────────────────────────────
+    const unsubSops = onSnapshot(doc(db, 'appData', 'sops'), (snap) => {
+      if (snap.exists() && snap.data().data) setMenuSOPs(snap.data().data);
+      else saveSOPsToCloud(defaultSOPs).catch(() => {});
+    }, () => {});
 
-        // UPSELL
-        if (d.upsellItems?.items) setUpsellItems(d.upsellItems.items);
-        if (d.upsellSettings) setUpsellSettings(prev => ({ ...prev, ...d.upsellSettings }));
+    // ── TABLE STATUS: real-time listener ─────────────────────────────────
+    const unsubTableStatus2 = onSnapshot(doc(db, 'appData', 'tableStatus'), (snap) => {
+      if (snap.exists() && snap.data().data) setTableStatus(prev => ({ ...prev, ...snap.data().data }));
+    }, () => {});
 
-        // TABLE STATUS
-        if (d.tableStatus?.data) setTableStatus(prev => ({ ...prev, ...d.tableStatus.data }));
-        // WAITING QUEUE
-        if (d.waitingQueue?.tokens) setWaitingQueue(d.waitingQueue.tokens);
+    // ── WAITING QUEUE: real-time listener ────────────────────────────────
+    const unsubWaitingQueue = onSnapshot(doc(db, 'appData', 'waitingQueue'), (snap) => {
+      if (snap.exists() && snap.data().tokens) setWaitingQueue(snap.data().tokens);
+    }, () => {});
 
-      } catch (e) { /* keep last known state */ }
-    };
-
-    // ── Menu images from localStorage ──────────────────────────────────────
-    try {
-      const stored = JSON.parse(localStorage.getItem('menuItemImages') || '{}');
-      setMenuItemImages(stored);
-    } catch (e) {}
-
-    // Immediate first load
-    pollFast();
-    pollSlow();
-
-    // Wake up on visibility change (device screen on / tab focused)
-    const handleVisibility = () => { if (!document.hidden) { pollFast(); } };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    const fastInterval = setInterval(pollFast, 5000);
-    const slowInterval = setInterval(pollSlow, 30000);
+    // ── UPSELL: real-time listener ────────────────────────────────────────
+    const unsubUpsellAdmin = onSnapshot(doc(db, 'appData', 'upsellItems'), (snap) => {
+      if (snap.exists() && snap.data().items) setUpsellItems(snap.data().items);
+    }, () => {});
+    const unsubUpsellSettingsAdmin = onSnapshot(doc(db, 'appData', 'upsellSettings'), (snap) => {
+      if (snap.exists()) setUpsellSettings(prev => ({ ...prev, ...snap.data() }));
+    }, () => {});
 
     return () => {
-      clearInterval(fastInterval);
-      clearInterval(slowInterval);
-      document.removeEventListener('visibilitychange', handleVisibility);
+      unsubOrders(); unsubMenu(); unsubSettings(); unsubInventory();
+      unsubExpenses(); unsubPromos(); unsubCategories2(); unsubKot();
+      unsubSops(); unsubTableStatus2(); unsubWaitingQueue();
+      unsubUpsellAdmin(); unsubUpsellSettingsAdmin();
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn]); // eslint-disable-line
 
   // PUBLIC MENU MODE - real-time Firebase listeners (no login needed)
   useEffect(() => {
@@ -1035,25 +1049,13 @@ function CafePOS() {
       let fixes = 0;
 
       // ── FIX 1: Auto-flush offline queue if online ──────────────────
-      try {
-        const q = JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]');
-        if (q.length > 0 && navigator.onLine) {
-          const remaining = [];
-          for (const item of q) {
-            try {
-              await apiWrite(item.op || 'set', item.path, item.data);
-            } catch(e) {
-              remaining.push(item);
-            }
-          }
-          if (remaining.length < q.length) {
-            localStorage.setItem('kaapfi_offlineQueue', JSON.stringify(remaining));
-            const flushed = q.length - remaining.length;
-            addBrainEntry('QUEUE_FLUSH', `Auto-flushed ${flushed} offline item(s) — ${remaining.length} remaining`, 'info');
-            fixes++;
-          }
+      if (navigator.onLine) {
+        const { synced, remaining } = await flushOrderQueue();
+        if (synced > 0) {
+          addBrainEntry('QUEUE_FLUSH', `Auto-flushed ${synced} offline order(s) — ${remaining} remaining`, 'info');
+          fixes++;
         }
-      } catch(e) {}
+      }
 
       // ── CHECK 2: Duplicate orders (same table, within 8 min, same items count) ──
       try {
@@ -1096,14 +1098,11 @@ function CafePOS() {
       } catch(e) {}
 
       // ── CHECK 5: Firebase connectivity test ───────────────────────
-      try {
-        const pingRes = await fetch(`https://firestore.googleapis.com/v1/projects/kaapfi-pos/databases/(default)/documents/appData/settings?key=AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc`, { method: 'HEAD', signal: AbortSignal.timeout(6000) });
-        if (!pingRes.ok && pingRes.status !== 404) {
-          addBrainEntry('DB_UNREACHABLE', `Firebase ping returned HTTP ${pingRes.status} — database may be unavailable`, 'critical');
-        }
-      } catch(e) {
-        if (navigator.onLine) {
-          addBrainEntry('DB_TIMEOUT', 'Firebase did not respond within 6s — possible outage', 'warn');
+      if (navigator.onLine) {
+        try {
+          await withTimeout(getDocFromServer(doc(db, 'appData', 'kotCounter')), 8000);
+        } catch(e) {
+          addBrainEntry('DB_UNREACHABLE', `Firebase not responding (${e.code || e.message}) — orders are kept on this device until it reconnects`, 'warn');
         }
       }
 
@@ -1127,23 +1126,9 @@ function CafePOS() {
   // ── OFFLINE QUEUE: flush queued orders when internet returns ─────────
   const [queueCount, setQueueCount] = React.useState(0);
   const flushOfflineQueue = React.useCallback(async () => {
-    try {
-      const queue = JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]');
-      if (queue.length === 0) { setQueueCount(0); return; }
-      const remaining = [];
-      let synced = 0;
-      for (const order of queue) {
-        try {
-          const { _queuedAt, _localId, ...cleanOrder } = order;
-          const result = await apiWrite('add', 'orders', cleanOrder);
-          if (result && result.id) synced++;
-          else remaining.push(order);
-        } catch (e) { remaining.push(order); }
-      }
-      localStorage.setItem('kaapfi_offlineQueue', JSON.stringify(remaining));
-      setQueueCount(remaining.length);
-      if (synced > 0) console.log(`[OfflineQueue] Synced ${synced} queued order(s) to Firebase`);
-    } catch (e) {}
+    const { synced, remaining } = await flushOrderQueue();
+    setQueueCount(remaining);
+    if (synced > 0) console.log(`[OfflineQueue] Synced ${synced} queued order(s) to Firebase`);
   }, []);
 
   useEffect(() => {
@@ -1151,10 +1136,12 @@ function CafePOS() {
     try { setQueueCount(JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]').length); } catch (e) {}
     // Flush when browser comes back online
     const onOnline = () => { setSyncStatus('syncing'); flushOfflineQueue(); };
+    const onOffline = () => setSyncStatus('offline');
     window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
     // Also flush every 60s in case connection silently recovered
     const qi = setInterval(() => { if (navigator.onLine) flushOfflineQueue(); }, 60000);
-    return () => { window.removeEventListener('online', onOnline); clearInterval(qi); };
+    return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); clearInterval(qi); };
   }, [flushOfflineQueue]); // eslint-disable-line
 
   // ── DATAGUARD: Incidents real-time listener ───────────────────────────
