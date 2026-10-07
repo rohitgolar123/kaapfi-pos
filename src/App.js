@@ -626,6 +626,13 @@ function CafePOS() {
         acceptAllDevices: true,
         optionalServices: BT_SERVICES,
       });
+      if (!(await attachBluetooth(device))) alert('Could not find a writable port on this printer.\nMake sure it is a Bluetooth thermal printer.');
+    } catch(e) {
+      if (e.name !== 'NotFoundError') alert('Bluetooth error: ' + e.message);
+    }
+  };
+
+  const attachBluetooth = async (device) => {
       const server = await device.gatt.connect();
       // Find the first writable characteristic across all services
       let writeChar = null;
@@ -641,17 +648,31 @@ function CafePOS() {
         } catch(e) {}
         if (writeChar) break;
       }
-      if (!writeChar) { alert('Could not find a writable port on this printer.\nMake sure it is a Bluetooth thermal printer.'); return; }
+      if (!writeChar) return false;
       btCharRef.current = writeChar;
       setBtConnected(true);
       setBtDeviceName(device.name || 'Bluetooth Printer');
       device.addEventListener('gattserverdisconnected', () => {
         btCharRef.current = null; setBtConnected(false); setBtDeviceName('');
       });
-    } catch(e) {
-      if (e.name !== 'NotFoundError') alert('Bluetooth error: ' + e.message);
-    }
+      return true;
   };
+
+  // A reload drops the printer connection, and printing then falls back to the browser's print preview.
+  // Reconnect to the printer that was allowed before, without asking again, where the browser permits it.
+  useEffect(() => {
+    if (IS_PUBLIC_MENU) return;
+    (async () => {
+      try {
+        const ports = navigator.serial && navigator.serial.getPorts ? await navigator.serial.getPorts() : [];
+        if (ports[0]) { await ports[0].open({ baudRate: 9600 }); serialPortRef.current = ports[0]; setPrinterConnected(true); return; }
+      } catch (e) {}
+      try {
+        const devices = navigator.bluetooth && navigator.bluetooth.getDevices ? await navigator.bluetooth.getDevices() : [];
+        if (devices[0]) await attachBluetooth(devices[0]);
+      } catch (e) {}
+    })();
+  }, []); // eslint-disable-line
 
   const sendViaBluetooth = async (bytes) => {
     const char = btCharRef.current;
@@ -771,6 +792,7 @@ function CafePOS() {
         const todayOrders = [];
         snap.forEach(d => todayOrders.push({ id: d.id, ...d.data(), firebaseDocId: d.id }));
         todayOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        ordersLoadedRef.current = true;
         setOrders(prev => {
           const start = todayISO();
           return [...todayOrders, ...prev.filter(o => (o.timestamp || '') < start)];
@@ -1312,10 +1334,12 @@ function CafePOS() {
   // Kitchen alert — play sound + auto-print KOT when new orders arrive
   const prevOrderCountRef = useRef(0);
   const autoPrintedRef = useRef(null); // null = not yet seeded (initial load)
+  const ordersLoadedRef = useRef(false);
   useEffect(() => {
     const activeOrders = orders.filter(o => o.status === 'new' || o.status === 'in_progress' || (!o.status && o.paymentStatus === 'pending'));
     const activeCount = activeOrders.length;
 
+    if (!ordersLoadedRef.current) return; // today's orders have not been read from the device yet
     if (autoPrintedRef.current === null) {
       // Seed on first load — don't auto-print orders that already exist
       autoPrintedRef.current = new Set(activeOrders.map(o => o.id));
@@ -2384,6 +2408,13 @@ function CafePOS() {
           <button onClick={() => setUpdateAvailable(null)} style={{ padding: '6px 12px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.6)', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>Later</button>
         </div>
       )}
+      {!isPublicMenuMode && !btConnected && !printerConnected && (settings.autoPrintKOT || settings.autoPrintBill) && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 16px', background: '#E65100', color: '#fff', fontSize: '13px', fontWeight: '800' }}>
+          <span>🖨 Printer is not connected — prints will open a print preview until you connect it.</span>
+          <button onClick={connectBluetooth} style={{ padding: '6px 14px', background: '#fff', color: '#E65100', border: 'none', borderRadius: '6px', fontWeight: '800', cursor: 'pointer', fontSize: '13px' }}>Connect Bluetooth</button>
+          <button onClick={connectPrinter} style={{ padding: '6px 14px', background: '#fff', color: '#E65100', border: 'none', borderRadius: '6px', fontWeight: '800', cursor: 'pointer', fontSize: '13px' }}>Connect USB</button>
+        </div>
+      )}
       {!isPublicMenuMode && (folderBackup.state === 'none' || folderBackup.state === 'needs-permission') && (
         <button onClick={turnOnFolderBackup} style={{ display: 'block', width: '100%', padding: '10px 16px', background: '#B71C1C', color: '#fff', border: 'none', fontSize: '13px', fontWeight: '800', cursor: 'pointer', textAlign: 'center' }}>
           {folderBackup.state === 'none'
@@ -2464,16 +2495,8 @@ function CafePOS() {
           { id: 'kitchen', icon: '👨‍🍳', label: 'Kitchen', staffVisible: true },
           { id: 'bills', icon: '🧾', label: 'Bills', staffVisible: true },
           { id: 'summary', icon: '💼', label: 'Summary', staffVisible: false },
-          { id: 'expenses', icon: '💸', label: 'Expenses', staffVisible: false },
-          { id: 'inventory', icon: '📦', label: 'Inventory', staffVisible: false },
-          { id: 'sops', icon: '📋', label: 'SOPs', staffVisible: false },
-          { id: 'reports', icon: '📊', label: 'Reports', staffVisible: false },
-          { id: 'marketing', icon: '🎯', label: 'Marketing', staffVisible: false },
           { id: 'menu', icon: '🍽️', label: 'Menu', staffVisible: false },
-          { id: 'promos', icon: '🎁', label: 'Promos', staffVisible: false },
           { id: 'customers', icon: '👥', label: 'Customers', staffVisible: false },
-          { id: 'menumanager', icon: '📸', label: 'Menu Manager', staffVisible: false },
-          { id: 'publicmenu', icon: '🌐', label: 'Public Menu', staffVisible: false },
           { id: 'monitor', icon: '🔍', label: 'Monitor', staffVisible: false },
           { id: 'settings', icon: '⚙️', label: 'Settings', staffVisible: false },
         ].filter(tab => !staffMode || tab.staffVisible).map(tab => {
@@ -2786,13 +2809,6 @@ function CafePOS() {
                         <option value="flat">₹</option><option value="percent">%</option>
                       </select>
                       <input type="number" value={manualDiscountValue} onChange={(e) => setManualDiscountValue(e.target.value)} placeholder="0" style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.2)', fontSize: '12px', background: '#1a3a5c', color: '#fff' }} />
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: '10px', padding: '10px', background: '#0F2236', borderRadius: '8px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '700', color: '#90CAF9' }}>🎁 Promo Code</label>
-                    <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
-                      <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value.toUpperCase())} placeholder="KF1234" style={{ flex: 1, padding: '6px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.2)', fontSize: '12px', background: '#1a3a5c', color: '#fff' }} />
-                      <button onClick={applyPromo} style={{ padding: '6px 12px', background: '#2196F3', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: '700' }}>Apply</button>
                     </div>
                   </div>
                   <div style={{ borderTop: '1px dashed rgba(255,255,255,0.2)', paddingTop: '10px', marginBottom: '12px', fontSize: '12px' }}>

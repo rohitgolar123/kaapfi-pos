@@ -1,7 +1,7 @@
 {
   "name": "kaapfi-pos",
-  "version": "6.0.1",
-  "releaseName": "Table stays occupied after Complete & Paid",
+  "version": "6.1.0",
+  "releaseName": "Simpler menu, printer reconnect fix",
   "private": true,
   "dependencies": {
     "firebase": "^10.14.1",
