@@ -3,13 +3,12 @@
 //
 // Files written, per install (so one install never overwrites another's backup):
 //   kaapfi-full-<install>.json            everything, rewritten once a day
-//   kaapfi-day-<install>-<YYYY-MM-DD>.json  only what changed that day, rewritten within a minute of each change
+//   kaapfi-day-<install>-<YYYY-MM-DD>.json  only what changed that day, rewritten within a minute of each change (kept forever)
 import * as local from './localdb';
 import { getInstallId } from './sync';
 
 export const backupSupported = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
 
-const DAY_FILES_KEPT = 30;
 const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 // The folder handle cannot be stored as JSON, so it lives in its own tiny database.
@@ -58,11 +57,6 @@ export async function writeBackup({ forceFull = false } = {}) {
   if (forceFull || localStorage.getItem('kaapfi_lastFullBackup') !== today) {
     await writeJson(dir, `kaapfi-full-${id}.json`, await local.exportAll());
     localStorage.setItem('kaapfi_lastFullBackup', today);
-    const cutoff = localDate(new Date(Date.now() - DAY_FILES_KEPT * 86400000));
-    for (const name of await fileNames(dir)) {
-      const m = name.match(new RegExp(`^kaapfi-day-${id}-(\\d{4}-\\d{2}-\\d{2})\\.json$`));
-      if (m && m[1] < cutoff) await dir.removeEntry(name).catch(() => {});
-    }
   }
   const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
   await writeJson(dir, `kaapfi-day-${id}-${today}.json`, await local.exportAll(dayStart.getTime()));

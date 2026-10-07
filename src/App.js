@@ -7,6 +7,11 @@ import SetupScreen from './SetupScreen';
 import buildInfo from './buildInfo.json';
 import OwnerReports from './OwnerReports';
 
+// Veg / Non-veg: an item can set `veg` itself; otherwise it is worked out from its name and chosen option.
+const NON_VEG_WORDS = /chicken|egg|mutton|fish|prawn|meat/i;
+const isNonVeg = (i) => i.veg === false || (i.veg !== true && NON_VEG_WORDS.test(`${i.name || ''} ${i.variant || ''}`));
+const vegTag = (i) => (i.category === 'BEVERAGES' ? '' : isNonVeg(i) ? ' (Non-Veg)' : ' (Veg)');
+
 const CAFE_PASSWORD = "9923022925";
 const DELETE_PASSWORD = "9923022925";
 
@@ -331,7 +336,25 @@ async function flushOrderQueue() {
   return { synced, remaining: remaining.length };
 }
 
-async function deleteOrderFromFirebase(docId) { try { await deleteDoc(doc(db, "orders", docId)); return true; } catch (e) { return false; } }
+// Bills are never destroyed. "Deleting" one moves it to the `deletedOrders` archive, from where it can be restored.
+async function deleteOrderFromFirebase(docId) {
+  try {
+    const ref = doc(db, "orders", docId);
+    const snap = await getDoc(ref);
+    if (snap.exists()) await setDoc(doc(db, "deletedOrders", docId), { ...snap.data(), deletedAt: new Date().toISOString() });
+    await deleteDoc(ref);
+    return true;
+  } catch (e) { return false; }
+}
+async function restoreDeletedOrder(docId) {
+  const ref = doc(db, "deletedOrders", docId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return false;
+  const { deletedAt, ...order } = snap.data();
+  await setDoc(doc(db, "orders", docId), order);
+  await deleteDoc(ref);
+  return true;
+}
 
 async function saveCustomer(phone, orderData) {
   try {
@@ -1247,28 +1270,26 @@ function CafePOS() {
     } catch (e) {}
   }, [isLoggedIn]);
 
-  // Cleanup old backups (keep last 7 days) and resolved incidents (keep last 30)
+  // Housekeeping: hourly menu snapshots older than a week are thinned out (the daily snapshot for each day is kept forever).
   useEffect(() => {
     if (!isLoggedIn) return;
-    const cleanup = async () => {
-      try {
-        // Delete backup docs older than 7 days
-        const cutoff = new Date(Date.now() - 7 * 86400000);
-        for (let d = 8; d <= 30; d++) {
-          const date = new Date(Date.now() - d * 86400000).toISOString().split('T')[0];
-          deleteDoc(doc(db, "backups", `menu_${date}`)).catch(() => {});
-          for (let h = 0; h < 24; h++) deleteDoc(doc(db, "backups", `menu_${date}_h${h}`)).catch(() => {});
-        }
-        // Delete resolved incidents older than 7 days
-        const incSnap = await getDocs(collection(db, "incidents"));
-        incSnap.forEach(d => {
-          const data = d.data();
-          if (data.resolved && new Date(data.timestamp || 0) < cutoff) deleteDoc(doc(db, "incidents", d.id)).catch(() => {});
-        });
-      } catch (e) {}
-    };
-    cleanup();
+    for (let d = 8; d <= 30; d++) {
+      const date = new Date(Date.now() - d * 86400000).toISOString().split('T')[0];
+      for (let h = 0; h < 24; h++) deleteDoc(doc(db, "backups", `menu_${date}_h${h}`)).catch(() => {});
+    }
   }, [isLoggedIn]); // eslint-disable-line
+
+  // Removed bills (archive)
+  const [deletedOrders, setDeletedOrders] = useState([]);
+  useEffect(() => {
+    if (IS_PUBLIC_MENU || !isLoggedIn) return;
+    return onSnapshot(collection(db, "deletedOrders"), (snap) => {
+      const list = [];
+      snap.forEach(d => list.push({ ...d.data(), firebaseDocId: d.id }));
+      list.sort((x, y) => ((x.deletedAt || '') < (y.deletedAt || '') ? 1 : -1));
+      setDeletedOrders(list);
+    }, () => {});
+  }, [isLoggedIn]);
 
   // Countdown ticker for upsell popup
   useEffect(() => {
@@ -1344,7 +1365,8 @@ function CafePOS() {
       // Seed on first load — don't auto-print orders that already exist
       autoPrintedRef.current = new Set(activeOrders.map(o => o.id));
     } else {
-      const newOrders = activeOrders.filter(o => !autoPrintedRef.current.has(o.id));
+      // Wait for the KOT number (it is assigned a moment after the order is saved) so the slip never prints "KOT #—"
+      const newOrders = activeOrders.filter(o => !autoPrintedRef.current.has(o.id) && o.kotNumber != null);
       newOrders.forEach(o => autoPrintedRef.current.add(o.id));
       if (newOrders.length > 0) {
         if (activeTab !== 'kitchen') { setKitchenAlertActive(true); }
@@ -1427,7 +1449,12 @@ function CafePOS() {
     await saveInventoryToCloud(newInventory);
   };
 
-  const addToOrder = (item) => {
+  const [variantPick, setVariantPick] = useState(null); // menu item waiting for a Paneer/Chicken choice
+  const addToOrder = (menuItem, variant) => {
+    const options = menuItem.requiresVariant ? (menuItem.variantOptions || []) : [];
+    if (options.length > 0 && !variant) { setVariantPick(menuItem); return; }
+    // Each option is its own line on the order, KOT and bill, e.g. "Chicken Chatpata Sandwich"
+    const item = variant ? { ...menuItem, id: `${menuItem.id}-${variant}`, menuId: menuItem.id, name: `${variant} ${menuItem.name}`, variant } : menuItem;
     const existing = currentOrder.find(o => o.id === item.id);
     if (existing) setCurrentOrder(currentOrder.map(o => o.id === item.id ? { ...o, quantity: o.quantity + 1 } : o));
     else setCurrentOrder([...currentOrder, { ...item, quantity: 1 }]);
@@ -1644,7 +1671,7 @@ function CafePOS() {
     if (selectedBills.length === 0) { alert('Select bills'); return; }
     for (const id of selectedBills) { const order = orders.find(o => o.id === id); if (order?.firebaseDocId) await deleteOrderFromFirebase(order.firebaseDocId); }
     setSelectedBills([]); setShowDeletePassword(null); setDeletePassword('');
-    alert(`✅ ${selectedBills.length} bills deleted!`);
+    alert(`✅ ${selectedBills.length} bill(s) removed from sales. They are kept in Monitor → Removed bills and can be restored.`);
   };
 
   const bulkDeletePromos = async () => {
@@ -1660,6 +1687,10 @@ function CafePOS() {
     if (deletePassword !== DELETE_PASSWORD) { alert('❌ Wrong password!'); return; }
     if (selectedMenuItems.length === 0) { alert('Select items'); return; }
     const filtered = menuItems.filter(m => !selectedMenuItems.includes(m.id));
+    // Keep a copy of every removed menu item
+    for (const item of menuItems.filter(m => selectedMenuItems.includes(m.id))) {
+      await addDoc(collection(db, "deletedMenuItems"), { ...item, deletedAt: new Date().toISOString() });
+    }
     await saveMenuToCloud(filtered);
     setSelectedMenuItems([]); setShowDeletePassword(null); setDeletePassword('');
     alert(`✅ ${selectedMenuItems.length} items deleted!`);
@@ -1743,7 +1774,7 @@ function CafePOS() {
         ...(bCustName  ? [{ text: rpad('Name:',  bCustName,  W) }] : []),
         ...(bCustPhone ? [{ text: rpad('Phone:', bCustPhone, W) }] : []),
         { divider: true },
-        ...bItems.map(i => ({ text: rpad(`${i.quantity||1}x ${i.name}`, `Rs${(i.price||0) * (i.quantity||1)}`, W) })),
+        ...bItems.map(i => ({ text: rpad(`${i.quantity||1}x ${i.name}${vegTag(i)}`, `Rs${(i.price||0) * (i.quantity||1)}`, W) })),
         { divider: true },
         { text: rpad(`Items: ${totalItems}   Subtotal:`, `Rs${bSubtotal}`, W) },
         ...(bDiscount > 0 ? [{ text: rpad('Discount:', `-Rs${bDiscount.toFixed(0)}`, W) }] : []),
@@ -1762,7 +1793,7 @@ function CafePOS() {
 
     // Fallback: browser print dialog (desktop or no BT)
     const itemsHTML = bItems.map(i =>
-      `<tr><td style="padding:3px 0;">${i.quantity}</td><td style="padding:3px 0;">${i.name}</td><td style="padding:3px 0;text-align:right;">₹${i.price}</td><td style="padding:3px 0;text-align:right;">₹${i.price * i.quantity}</td></tr>`
+      `<tr><td style="padding:3px 0;">${i.quantity}</td><td style="padding:3px 0;">${i.name}${vegTag(i)}</td><td style="padding:3px 0;text-align:right;">₹${i.price}</td><td style="padding:3px 0;text-align:right;">₹${i.price * i.quantity}</td></tr>`
     ).join('');
     printWithIframe(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
       ${PRINT_CSS}
@@ -1821,7 +1852,7 @@ function CafePOS() {
           const sops = (menuSOPs[i.name] || []);
           const sopText = sops.length > 0 ? sops.map(r => `  ${r.ingredient} ${r.quantity * (i.quantity || 1)}`).join(' ') : null;
           return [
-            { text: `x${i.quantity || 1}  ${i.name}`, bold: true, large: true },
+            { text: `x${i.quantity || 1}  ${i.name}${vegTag(i)}`, bold: true, large: true },
             ...(sopText ? [{ text: sopText }] : []),
           ];
         }),
@@ -1841,7 +1872,7 @@ function CafePOS() {
         : '';
       return `<div style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-bottom:1px dashed #999;">
         <div style="min-width:26px;font-size:19px;font-weight:900;text-align:center;line-height:1;">×${i.quantity||1}</div>
-        <div style="font-size:16px;font-weight:700;line-height:1.2;flex:1;">${i.name}${sopLine}</div>
+        <div style="font-size:16px;font-weight:700;line-height:1.2;flex:1;">${i.name}${vegTag(i)}${sopLine}</div>
       </div>`;
     }).join('');
     printWithIframe(`<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
@@ -2292,7 +2323,9 @@ function CafePOS() {
               if (editingOrderItems.length === 0) {
                 await deleteOrderFromFirebase(order.firebaseDocId);
               } else {
-                await apiWrite('update', 'orders/' + order.firebaseDocId, { items: editingOrderItems, subtotal: newTotal, total: newTotal });
+                // Keep what the bill looked like before the edit
+                const editHistory = [...(order.editHistory || []), { at: new Date().toISOString(), items: order.items || [], total: order.total || 0 }];
+                await apiWrite('update', 'orders/' + order.firebaseDocId, { items: editingOrderItems, subtotal: newTotal, total: newTotal, editHistory });
               }
               alert('✅ Order updated!');
             } catch (e) { alert('❌ Update failed'); }
@@ -2360,6 +2393,27 @@ function CafePOS() {
       <DeleteModal />
       <ViewBillModal />
       <ModifyCartModal />
+      {variantPick && (
+        <div onClick={() => setVariantPick(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: '24px', borderRadius: '14px', width: '90%', maxWidth: '380px', textAlign: 'center' }}>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: '#000' }}>{variantPick.name}</div>
+            <div style={{ fontSize: '13px', color: '#666', margin: '4px 0 16px' }}>Choose one · ₹{variantPick.price}</div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {variantPick.variantOptions.map(opt => {
+                const nonVeg = isNonVeg({ name: variantPick.name, variant: opt });
+                return (
+                  <button key={opt} onClick={() => { addToOrder(variantPick, opt); setVariantPick(null); }}
+                    style={{ flex: 1, padding: '18px 8px', fontSize: '17px', fontWeight: '800', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', background: nonVeg ? '#C62828' : '#2E7D32' }}>
+                    {opt}
+                    <div style={{ fontSize: '11px', fontWeight: '700', opacity: 0.9 }}>{nonVeg ? 'Non-Veg' : 'Veg'}</div>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setVariantPick(null)} style={{ marginTop: '14px', background: 'none', border: 'none', color: '#666', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* New order notifications from public menu */}
       {newMenuOrders.length > 0 && (
@@ -2406,13 +2460,6 @@ function CafePOS() {
             window.location.reload();
           }} style={{ padding: '6px 16px', background: '#fff', color: '#1565C0', border: 'none', borderRadius: '6px', fontWeight: '800', cursor: 'pointer', fontSize: '13px' }}>Update now</button>
           <button onClick={() => setUpdateAvailable(null)} style={{ padding: '6px 12px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.6)', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>Later</button>
-        </div>
-      )}
-      {!isPublicMenuMode && !btConnected && !printerConnected && (settings.autoPrintKOT || settings.autoPrintBill) && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', padding: '10px 16px', background: '#E65100', color: '#fff', fontSize: '13px', fontWeight: '800' }}>
-          <span>🖨 Printer is not connected — prints will open a print preview until you connect it.</span>
-          <button onClick={connectBluetooth} style={{ padding: '6px 14px', background: '#fff', color: '#E65100', border: 'none', borderRadius: '6px', fontWeight: '800', cursor: 'pointer', fontSize: '13px' }}>Connect Bluetooth</button>
-          <button onClick={connectPrinter} style={{ padding: '6px 14px', background: '#fff', color: '#E65100', border: 'none', borderRadius: '6px', fontWeight: '800', cursor: 'pointer', fontSize: '13px' }}>Connect USB</button>
         </div>
       )}
       {!isPublicMenuMode && (folderBackup.state === 'none' || folderBackup.state === 'needs-permission') && (
@@ -5316,6 +5363,28 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                         {inc.resolved && (
                           <span style={{ fontSize: '10px', color: 'rgba(105,240,174,0.6)', fontWeight: '700' }}>✓ Resolved</span>
                         )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── REMOVED BILLS ────────────────────────────────────── */}
+              <div style={{ background: '#122B45', borderRadius: '12px', padding: '16px', marginTop: '20px' }}>
+                <div style={{ fontSize: '15px', fontWeight: '800', color: '#fff' }}>🗄 Removed bills ({deletedOrders.length})</div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)', margin: '2px 0 10px' }}>Nothing is ever erased. A bill removed from the Bills tab is kept here and can be put back.</div>
+                {deletedOrders.length === 0 ? (
+                  <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>No bills have been removed.</div>
+                ) : (
+                  <div style={{ maxHeight: '260px', overflowY: 'auto' }}>
+                    {deletedOrders.map(o => (
+                      <div key={o.firebaseDocId} style={{ display: 'flex', gap: '10px', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '12px', fontWeight: '800', color: '#fff' }}>₹{Math.round(o.total || 0)} · {o.customerName || 'Walk-in'} · {o.timestamp ? new Date(o.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</div>
+                          <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', wordBreak: 'break-word' }}>{(o.items || []).map(i => `${i.name}×${i.quantity}`).join(', ')}</div>
+                          <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.35)' }}>Removed {o.deletedAt ? new Date(o.deletedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''}</div>
+                        </div>
+                        <button onClick={async () => { if (window.confirm('Put this bill back into sales?')) await restoreDeletedOrder(o.firebaseDocId); }} style={{ padding: '6px 12px', background: 'rgba(105,240,174,0.1)', color: '#69F0AE', border: '1px solid rgba(105,240,174,0.3)', borderRadius: '6px', cursor: 'pointer', fontSize: '11px', fontWeight: '700', whiteSpace: 'nowrap' }}>Restore</button>
                       </div>
                     ))}
                   </div>
