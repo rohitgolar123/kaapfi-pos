@@ -1,23 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, getDocs, doc, setDoc, getDoc, getDocFromServer, updateDoc, query, where, deleteDoc, onSnapshot } from "firebase/firestore";
+import { IS_PUBLIC_MENU, db, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot } from './datastore';
+import { exportAll, importAll, requestPersistence } from './localdb';
+import { getSetup, importHistory, syncReports, getUploadStatus } from './sync';
+import SetupScreen from './SetupScreen';
+import OwnerReports from './OwnerReports';
 
-const firebaseConfig = {
-  apiKey: "AIzaSy8tI9k7VqskCABCwGMl6OY_PCkuXj80Nxc",
-  authDomain: "kaapfi-pos.firebaseapp.com",
-  projectId: "kaapfi-pos",
-  storageBucket: "kaapfi-pos.firebasestorage.app",
-  messagingSenderId: "841260204036",
-  appId: "1:841260204036:web:8a614c8b0ff3ac4d81f551",
-  measurementId: "G-ZC3CPTHBYG"
-};
-
-const app = initializeApp(firebaseConfig);
-// Persistent cache: data survives reloads offline; undefined fields are dropped instead of throwing
-const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true,
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-});
 const CAFE_PASSWORD = "9923022925";
 const DELETE_PASSWORD = "9923022925";
 
@@ -598,6 +585,11 @@ function CafePOS() {
   const [brainStatus, setBrainStatus] = useState('idle'); // idle | running | fixed | alert
   const [lastBrainRun, setLastBrainRun] = useState(null);
   const [dayKey, setDayKey] = useState(() => new Date().toDateString());
+  // 'checking' | 'needed' | 'done' — the customer QR menu needs no setup
+  const [setupState, setSetupState] = useState(IS_PUBLIC_MENU ? 'done' : 'checking');
+  const setupReady = setupState === 'done';
+  const [ownerMode, setOwnerMode] = useState(() => !IS_PUBLIC_MENU && localStorage.getItem('kaapfi_deviceRole') === 'owner');
+  const [reportSync, setReportSync] = useState({ busy: false, last: null, uploads: {} });
   // ── DataGuard state ──────────────────────────────────────────────────
   const [systemHealth, setSystemHealth] = useState({ status: 'healthy', menuCount: 0, lastCheck: null, lastBackup: null, incidentCount: 0 });
   const [recentIncidents, setRecentIncidents] = useState([]);
@@ -733,8 +725,9 @@ function CafePOS() {
     return new Uint8Array(bytes);
   };
 
-  // LOGIN CHECK
+  // LOGIN CHECK — waits until this device's one-time setup is finished
   useEffect(() => {
+    if (!setupReady) return;
     const loggedIn = localStorage.getItem('kaapfi_loggedIn');
     if (loggedIn === 'manager' || loggedIn === 'true') { setIsLoggedIn(true); setStaffMode(false); }
     else if (loggedIn === 'staff') { setIsLoggedIn(true); setStaffMode(true); }
@@ -754,7 +747,7 @@ function CafePOS() {
         setLockedTable(t); // LOCK — customer cannot change this
       }
     }
-  }, []);
+  }, [setupReady]); // eslint-disable-line
 
   // REAL-TIME SYNC — Firebase onSnapshot listeners. No polling, no delay.
   // Data arrives instantly when anything changes in Firebase.
@@ -780,7 +773,7 @@ function CafePOS() {
         todayOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
         setOrders(prev => {
           const start = todayISO();
-          return [...prev.filter(o => (o.timestamp || '') < start), ...todayOrders];
+          return [...todayOrders, ...prev.filter(o => (o.timestamp || '') < start)];
         });
 
         const activeTableNums = new Set(
@@ -897,6 +890,50 @@ function CafePOS() {
     return () => clearInterval(t);
   }, []);
 
+  // One-time device setup check, and ask the browser to never evict the on-device data
+  useEffect(() => {
+    if (IS_PUBLIC_MENU) return;
+    requestPersistence();
+    getSetup().then(s => setSetupState(s && s.done ? 'done' : 'needed')).catch(() => setSetupState('needed'));
+  }, []);
+
+  // Summary tab on a past date: read that day's orders from the device. The main `orders` list stays today-only
+  // because the kitchen, tables and alerts all treat it as "live" orders.
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [pastDayOrders, setPastDayOrders] = useState([]);
+  useEffect(() => {
+    if (IS_PUBLIC_MENU || !isLoggedIn || summaryDate === getISTDateStr()) { setPastDayOrders([]); return; }
+    const from = new Date(new Date(summaryDate + 'T00:00:00Z').getTime() - 86400000).toISOString();
+    const to = new Date(new Date(summaryDate + 'T00:00:00Z').getTime() + 2 * 86400000).toISOString();
+    let current = true;
+    getDocs(query(collection(db, 'orders'), where('timestamp', '>=', from))).then(snap => {
+      const list = [];
+      snap.forEach(d => { const o = { id: d.id, ...d.data(), firebaseDocId: d.id }; if ((o.timestamp || '') < to) list.push(o); });
+      if (current) setPastDayOrders(list);
+    }).catch(() => {});
+    return () => { current = false; };
+  }, [isLoggedIn, summaryDate, historyVersion]);
+
+  // The only cloud traffic the POS makes: the night report (after 10 PM), and a one-time download of past history
+  const runReportSync = React.useCallback(async (force = false) => {
+    setReportSync(p => ({ ...p, busy: true }));
+    const last = await syncReports({ force });
+    const uploads = await getUploadStatus().catch(() => ({}));
+    setReportSync({ busy: false, last, uploads });
+    return last;
+  }, []);
+  useEffect(() => {
+    if (IS_PUBLIC_MENU || ownerMode || !setupReady) return;
+    const tick = () => {
+      importHistory().then(done => { if (done) setHistoryVersion(v => v + 1); }).catch(() => {});
+      runReportSync();
+    };
+    tick();
+    const t = setInterval(tick, 5 * 60000);
+    window.addEventListener('online', tick);
+    return () => { clearInterval(t); window.removeEventListener('online', tick); };
+  }, [setupReady, ownerMode, runReportSync]);
+
   // PUBLIC MENU MODE - real-time Firebase listeners (no login needed)
   useEffect(() => {
     if (!isPublicMenuMode) return;
@@ -943,11 +980,11 @@ function CafePOS() {
 
   // Auto-populate custom categories from menu if empty (also persists to Firestore)
   useEffect(() => {
-    if (customCategories.length === 0 && menuItems.length > 0) {
+    if (setupReady && customCategories.length === 0 && menuItems.length > 0) {
       const cats = [...new Set(menuItems.map(i => (i.category || '').trim()).filter(Boolean))];
       if (cats.length > 0) { setCustomCategories(cats); localStorage.setItem('customCategories', JSON.stringify(cats)); saveCategoriesToCloud(cats); }
     }
-  }, [menuItems]); // eslint-disable-line
+  }, [menuItems, setupReady]); // eslint-disable-line
 
   // Keep syncStatusRef current so health monitor reads it without re-running
   useEffect(() => { syncStatusRef.current = syncStatus; }, [syncStatus]);
@@ -1101,14 +1138,13 @@ function CafePOS() {
         }
       } catch(e) {}
 
-      // ── CHECK 5: Firebase connectivity test ───────────────────────
-      if (navigator.onLine) {
-        try {
-          await withTimeout(getDocFromServer(doc(db, 'appData', 'kotCounter')), 8000);
-        } catch(e) {
-          addBrainEntry('DB_UNREACHABLE', `Firebase not responding (${e.code || e.message}) — orders are kept on this device until it reconnects`, 'warn');
+      // ── CHECK 5: Device storage ───────────────────────────────────
+      try {
+        const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null;
+        if (est && est.quota && est.usage / est.quota > 0.8) {
+          addBrainEntry('STORAGE_LOW', `Device storage for the app is ${Math.round(est.usage / est.quota * 100)}% full — download a backup and free up space`, 'critical');
         }
-      }
+      } catch(e) {}
 
       // ── CHECK 6: WaitingQueue stale slots (older than 2 hours) ────
       try {
@@ -1139,12 +1175,12 @@ function CafePOS() {
     // Seed queue count on load
     try { setQueueCount(JSON.parse(localStorage.getItem('kaapfi_offlineQueue') || '[]').length); } catch (e) {}
     // Flush when browser comes back online
-    const onOnline = () => { setSyncStatus('syncing'); flushOfflineQueue(); };
-    const onOffline = () => setSyncStatus('offline');
+    const onOnline = () => { if (IS_PUBLIC_MENU) setSyncStatus('syncing'); flushOfflineQueue(); };
+    const onOffline = () => { if (IS_PUBLIC_MENU) setSyncStatus('offline'); };
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
-    // Also flush every 60s in case connection silently recovered
-    const qi = setInterval(() => { if (navigator.onLine) flushOfflineQueue(); }, 60000);
+    // Drains any orders an older version of the app left in its queue
+    const qi = setInterval(() => { if (!IS_PUBLIC_MENU || navigator.onLine) flushOfflineQueue(); }, 60000);
     return () => { window.removeEventListener('online', onOnline); window.removeEventListener('offline', onOffline); clearInterval(qi); };
   }, [flushOfflineQueue]); // eslint-disable-line
 
@@ -1291,26 +1327,6 @@ function CafePOS() {
     }
   };
   const handleLogout = () => { setIsLoggedIn(false); localStorage.removeItem('kaapfi_loggedIn'); setCurrentOrder([]); };
-
-  // Clear all local cache and force fresh sync from Firebase
-  const clearLocalCache = async () => {
-    if (window.confirm('⚠️ This will:\n\n1. Clear all local browser cache\n2. Re-sync fresh data from Firebase\n3. Ensure both devices show SAME data\n\nContinue?')) {
-      try {
-        const dbs = await window.indexedDB.databases();
-        await Promise.all(
-          dbs.filter(d => d.name && d.name.includes('firestore'))
-             .map(d => new Promise((res) => { const r = window.indexedDB.deleteDatabase(d.name); r.onsuccess = res; r.onerror = res; }))
-        );
-      } catch (e) {}
-      // Clear localStorage except login + view mode preference
-      const loginState = localStorage.getItem('kaapfi_loggedIn');
-      const viewMode = localStorage.getItem('kaapfi_viewMode');
-      localStorage.clear();
-      if (loginState) localStorage.setItem('kaapfi_loggedIn', loginState);
-      if (viewMode) localStorage.setItem('kaapfi_viewMode', viewMode);
-      window.location.reload();
-    }
-  };
 
   // Manual refresh - forces fresh data from Firebase
   const forceRefresh = () => {
@@ -2075,7 +2091,7 @@ function CafePOS() {
   const todayRevenue = useMemo(() => todayOrders.reduce((sum, o) => sum + o.total, 0), [todayOrders]);
   const aiRec = customerOrders.length > 0 ? getAIRecommendation(customerOrders, menuItems) : null;
 
-  const selectedDateOrders = orders.filter(o => {
+  const selectedDateOrders = (summaryDate === todayISO ? orders : pastDayOrders).filter(o => {
     const orderDateISO = getISODate(o.timestamp) || getISODate(o.date);
     return orderDateISO === summaryDate;
   });
@@ -2098,6 +2114,16 @@ function CafePOS() {
   // Custom name for any table number (falls back to T{n})
   const tName = (t) => t === 'T/A' ? (settings.takeawayLabel || 'Takeaway') : t === 'WAIT' ? 'Waiting' : ((settings.tableNames || {})[t] || `T${t}`);
 
+  if (ownerMode) {
+    return <OwnerReports password={CAFE_PASSWORD} exitLabel="Back to the billing app"
+      onExit={() => { localStorage.removeItem('kaapfi_deviceRole'); setOwnerMode(false); }} />;
+  }
+  if (setupState === 'checking') return <div style={{ minHeight: '100vh', background: '#FC8019' }} />;
+  if (setupState === 'needed') {
+    return <SetupScreen autoStart={!!localStorage.getItem('kaapfi_loggedIn')} onDone={() => setSetupState('done')}
+      onOwner={() => { localStorage.setItem('kaapfi_deviceRole', 'owner'); setOwnerMode(true); }} />;
+  }
+
   if (!isLoggedIn && !isPublicMenuMode) {
     return (
       <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui, sans-serif', padding: '20px' }}>
@@ -2112,6 +2138,7 @@ function CafePOS() {
             <button onClick={() => handleLogin('staff')} style={{ flex: 1, padding: '14px', fontSize: '15px', fontWeight: '700', background: '#1a1a2e', color: '#fff', border: '2px solid #555', borderRadius: '8px', cursor: 'pointer' }}>Staff →</button>
           </div>
           <p style={{ fontSize: '11px', color: '#aaa', margin: '8px 0 0' }}>Manager = full access &nbsp;·&nbsp; Staff = order + KOT + bills only</p>
+          <button onClick={() => setOwnerMode(true)} style={{ marginTop: '14px', background: 'none', border: 'none', color: '#E64A19', fontSize: '13px', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}>📊 Owner reports</button>
           <p style={{ marginTop: '16px', fontSize: '12px', color: '#666' }}>Developed by Telzon Marketing</p>
         </div>
       </div>
@@ -2352,7 +2379,7 @@ function CafePOS() {
             {/* Sync status dot */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.15)', padding: '6px 12px', borderRadius: '16px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: syncStatus === 'connected' ? '#69F0AE' : syncStatus === 'syncing' ? '#FFD54F' : '#EF5350', boxShadow: syncStatus === 'connected' ? '0 0 6px #69F0AE' : syncStatus === 'offline' ? '0 0 6px #EF5350' : 'none' }} />
-              <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff' }}>{syncStatus === 'connected' ? 'Live' : syncStatus === 'syncing' ? 'Syncing…' : 'Offline'}</span>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: '#fff' }}>{syncStatus === 'connected' ? (IS_PUBLIC_MENU ? 'Live' : 'On device') : syncStatus === 'syncing' ? 'Syncing…' : 'Offline'}</span>
               {queueCount > 0 && <span style={{ fontSize: '10px', fontWeight: '800', background: '#FF7043', color: '#fff', borderRadius: '8px', padding: '1px 6px', marginLeft: '2px' }} title="Orders saved locally — will sync when online">{queueCount} queued</span>}
             </div>
             {/* DataGuard + AutoBrain health badge */}
@@ -2923,7 +2950,18 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                     <div style={{ fontSize: '16px', fontWeight: '900', color: '#FC8019' }}>📊 Day-End Closing Report</div>
                     <div style={{ display: 'flex', gap: '10px' }}>
                       <button onClick={sendWhatsApp} style={{ padding: '10px 20px', background: '#25D366', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: '14px' }}>📲 Send WhatsApp</button>
+                      <button disabled={reportSync.busy} onClick={async () => {
+                        const r = await runReportSync(true);
+                        alert(r.status === 'ok' ? (r.uploaded.length ? `✅ Report uploaded for: ${r.uploaded.join(', ')}` : '✅ Already up to date — nothing new to upload')
+                          : r.status === 'offline' ? '📵 No internet. The report will upload by itself when the device is online.'
+                          : `❌ Upload failed (${r.error || r.status}). It will retry automatically.`);
+                      }} style={{ padding: '10px 20px', background: '#1976D2', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', fontSize: '14px', opacity: reportSync.busy ? 0.6 : 1 }}>{reportSync.busy ? 'Uploading…' : '☁️ Upload report now'}</button>
                     </div>
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#8fb8dc', marginBottom: '12px' }}>
+                    {(reportSync.uploads[summaryDate] && reportSync.uploads[summaryDate].at)
+                      ? `☁️ Owner report for this day uploaded at ${new Date(reportSync.uploads[summaryDate].at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`
+                      : '☁️ Owner report for this day is not uploaded yet. It uploads automatically after 10 PM when the device has internet.'}
                   </div>
                   <pre style={{ background: '#0A1929', borderRadius: '10px', padding: '16px', fontSize: '12px', color: '#c8e0f4', fontFamily: 'monospace', whiteSpace: 'pre-wrap', lineHeight: '1.7', margin: 0 }}>{msg}</pre>
                 </div>
@@ -4073,7 +4111,7 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
             <div style={{ background: 'rgba(76,175,80,0.1)', padding: '16px', borderRadius: '12px', marginBottom: '20px', border: '2px solid rgba(76,175,80,0.4)' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 8px', color: '#69F0AE', fontWeight: '800' }}>🔒 Data Security Status</h3>
               <div style={{ fontSize: '13px', color: '#c8e0f4', fontWeight: '600', lineHeight: '1.8' }}>
-                <div style={{ marginBottom: '6px' }}>✅ All customer data stored safely in Firebase cloud</div>
+                <div style={{ marginBottom: '6px' }}>✅ All customer data is stored on this device</div>
                 <div style={{ marginBottom: '6px' }}>✅ {orders.length} orders backed up securely</div>
                 <div style={{ marginBottom: '6px' }}>✅ {allCustomers.length} customers saved permanently</div>
                 <div style={{ marginBottom: '6px' }}>✅ Code updates never delete your data</div>
@@ -4960,7 +4998,7 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', background: syncStatus === 'connected' ? 'rgba(76,175,80,0.1)' : 'rgba(230,74,25,0.15)', borderRadius: '10px', padding: '12px 18px', border: `1px solid ${syncStatus === 'connected' ? 'rgba(76,175,80,0.4)' : 'rgba(230,74,25,0.5)'}` }}>
                 <div style={{ width: '12px', height: '12px', borderRadius: '50%', background: syncStatus === 'connected' ? '#69F0AE' : '#E64A19', boxShadow: syncStatus === 'connected' ? '0 0 8px #69F0AE' : '0 0 8px #E64A19', animation: 'pulse 2s infinite' }} />
                 <span style={{ color: syncStatus === 'connected' ? '#69F0AE' : '#FC8019', fontWeight: '800', fontSize: '14px' }}>
-                  {syncStatus === 'connected' ? '● Firebase Connected — Live sync active' : '⚠ Firebase OFFLINE — Check internet connection'}
+                  {syncStatus === 'connected' ? '● Data is saved on this device — no internet needed for billing' : '⚠ Loading data…'}
                 </span>
               </div>
 
@@ -5065,7 +5103,7 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                     { label: 'Promo codes active', value: promoCodes.filter(p => p.active).length, ok: true },
                     { label: 'Cafe name', value: settings.cafeName || '—', ok: !!settings.cafeName },
                     { label: 'Tax rate', value: `${settings.taxRate || 0}%`, ok: true },
-                    { label: 'Firebase sync', value: syncStatus, ok: syncStatus === 'connected' },
+                    { label: 'Device storage', value: syncStatus === 'connected' ? 'ready' : syncStatus, ok: syncStatus === 'connected' },
                   ].map((row, i) => (
                     <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
                       <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '12px' }}>{row.label}</span>
@@ -5109,15 +5147,15 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                 {/* Guard capabilities */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px', marginBottom: '16px' }}>
                   {[
-                    { icon: '📸', label: 'Auto Backup', desc: 'Hourly Firestore snapshots', active: true },
+                    { icon: '📸', label: 'Auto Backup', desc: 'Hourly menu snapshots on device', active: true },
                     { icon: '🔍', label: 'Menu Integrity', desc: `Watching ${defaultMenu.length} core items`, active: menuItems.length >= defaultMenu.length * 0.8 },
                     { icon: '⚡', label: 'Auto-Restore', desc: 'Restores from last 7 days backup', active: true },
                     { icon: '📝', label: 'Incident Log', desc: `${recentIncidents.length} events logged`, active: true },
                     { icon: '🔄', label: 'Merge Protection', desc: 'Never overwrites defaults', active: true },
-                    { icon: '📶', label: 'Offline Queue', desc: 'Auto-flush when reconnected', active: true },
+                    { icon: '📶', label: 'Works Offline', desc: 'All data stored on this device', active: true },
                     { icon: '🧬', label: 'Duplicate Detect', desc: 'Same table+items within 8 min', active: true },
                     { icon: '⏱', label: 'Stuck Order Alert', desc: 'Flags orders 45+ min unpaid', active: true },
-                    { icon: '🔗', label: 'DB Ping', desc: 'Firebase live every 3 min', active: true },
+                    { icon: '☁️', label: 'Night Report', desc: 'Uploads after 10 PM when online', active: true },
                     { icon: '🎫', label: 'Wait Queue Watch', desc: 'Stale tokens after 2 hours', active: true },
                   ].map((cap, i) => (
                     <div key={i} style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '12px', display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
@@ -5158,6 +5196,30 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                 }} style={{ padding: '10px 20px', background: 'rgba(252,128,25,0.15)', color: '#FC8019', border: '1px solid rgba(252,128,25,0.4)', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '13px' }}>
                   🔄 Force Restore from Backup
                 </button>
+
+                {/* Full on-device data backup */}
+                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>💾 All data is stored on this device</div>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', margin: '4px 0 10px' }}>If this device is lost or broken, the only copy is a backup file. Download one regularly and keep it somewhere else (email it to yourself or save it to a pen drive).</div>
+                  <button onClick={async () => {
+                    const dump = await exportAll();
+                    const url = URL.createObjectURL(new Blob([JSON.stringify(dump)], { type: 'application/json' }));
+                    const a = document.createElement('a');
+                    a.href = url; a.download = `kaapfi-backup-${getISTDateStr()}.json`; a.click();
+                    URL.revokeObjectURL(url);
+                  }} style={{ padding: '10px 20px', background: 'rgba(33,150,243,0.2)', color: '#64B5F6', border: '1px solid rgba(33,150,243,0.5)', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '13px', marginRight: '10px' }}>
+                    ⬇️ Download full backup
+                  </button>
+                  <label style={{ padding: '10px 20px', background: 'rgba(255,255,255,0.06)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '13px', display: 'inline-block' }}>
+                    ⬆️ Restore from backup file
+                    <input type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={async (e) => {
+                      const file = e.target.files[0]; e.target.value = '';
+                      if (!file || !window.confirm('Restore from this backup file? Records in the file replace the matching records on this device.')) return;
+                      try { const n = await importAll(JSON.parse(await file.text())); alert(`✅ Restored ${n} records. The app will now reload.`); window.location.reload(); }
+                      catch (err) { alert('❌ Could not restore: ' + (err.message || err)); }
+                    }} />
+                  </label>
+                </div>
               </div>
 
               {/* ── INCIDENT LOG ─────────────────────────────────────────── */}
@@ -5230,7 +5292,7 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
           <div style={{ maxWidth: '700px' }}>
             <h2 style={{ fontSize: '24px', margin: '0 0 20px', color: '#fff', fontWeight: '800' }}>⚙️ Settings</h2>
             <div style={{ background: 'rgba(76,175,80,0.1)', padding: '12px', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', color: '#69F0AE', border: '1px solid rgba(76,175,80,0.3)' }}>
-              🔄 <strong>All changes sync to ALL devices instantly!</strong>
+              💾 <strong>Changes are saved on this device.</strong>
             </div>
             <div style={{ background: '#122B45', padding: '24px', borderRadius: '12px' }}>
               <h3 style={{ fontSize: '16px', margin: '0 0 12px', color: '#FC8019' }}>Cafe Info</h3>

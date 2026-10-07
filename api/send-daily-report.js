@@ -29,104 +29,23 @@ function getISTDateStr() {
   return ist.toISOString().split('T')[0];
 }
 
+// The café device works offline and uploads each day's report to `dailyReports/{date}` after 10 PM.
+// This emails that uploaded report; orders themselves are no longer in the cloud.
 module.exports = async function handler(req, res) {
-  // Allow manual trigger via GET, and Vercel cron via GET too
   try {
     const istDate = getISTDateStr();
-    const istOffset = 5.5 * 60 * 60 * 1000;
-    const nowIST = new Date(new Date().getTime() + istOffset);
-    const istMidnightStr = nowIST.toISOString().split('T')[0] + 'T00:00:00.000Z';
-    const todayQueryStart = new Date(new Date(istMidnightStr).getTime() - istOffset).toISOString();
-
-    // Fetch today's orders
-    const ordersRes = await fetch(`${BASE}:runQuery?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        structuredQuery: {
-          from: [{ collectionId: 'orders' }],
-          where: {
-            fieldFilter: {
-              field: { fieldPath: 'timestamp' },
-              op: 'GREATER_THAN_OR_EQUAL',
-              value: { stringValue: todayQueryStart }
-            }
-          }
-        }
-      })
-    });
-    const ordersJson = await ordersRes.json();
-    const orders = (Array.isArray(ordersJson) ? ordersJson : [])
-      .filter(d => d.document)
-      .map(d => parseFields(d.document.fields));
-
-    // Fetch expenses from appData
-    const expRes = await fetch(`${BASE}/appData/expenses?key=${API_KEY}`);
-    const expJson = await expRes.json();
-    const allExpenses = expJson.fields ? parseFields(expJson.fields) : {};
-    const expenses = (allExpenses.list || []).filter(e => e.date === istDate);
-
-    // ── Compute totals ──
-    const paidOrders = orders.filter(o => o.paymentStatus === 'paid');
-    const cashOrders  = paidOrders.filter(o => o.paymentMethod === 'cash');
-    const upiOrders   = paidOrders.filter(o => o.paymentMethod === 'upi');
-    const cardOrders  = paidOrders.filter(o => o.paymentMethod === 'card');
-
-    const cashRev  = cashOrders.reduce((s, o) => s + (o.total || 0), 0);
-    const upiRev   = upiOrders.reduce((s, o) => s + (o.total || 0), 0);
-    const cardRev  = cardOrders.reduce((s, o) => s + (o.total || 0), 0);
-    const totalRev = cashRev + upiRev + cardRev;
-
-    const cashExp  = expenses.filter(e => e.paidBy === 'cash').reduce((s, e) => s + (e.amount || 0), 0);
-    const upiExp   = expenses.filter(e => e.paidBy === 'upi').reduce((s, e) => s + (e.amount || 0), 0);
-    const totalExp = expenses.reduce((s, e) => s + (e.amount || 0), 0);
-
-    const netCash   = cashRev - cashExp;
-    const netProfit = totalRev - totalExp;
-
-    const dineIn   = paidOrders.filter(o => o.tableNumber && o.tableNumber !== 'T/A' && o.tableNumber !== 'WAIT').length;
-    const takeaway = paidOrders.filter(o => o.tableNumber === 'T/A').length;
-    const waiting  = paidOrders.filter(o => o.tableNumber === 'WAIT').length;
-
-    // Category breakdown
-    const catMap = {};
-    paidOrders.forEach(o => (o.items || []).forEach(item => {
-      const cat = item.category || 'Other';
-      catMap[cat] = (catMap[cat] || 0) + ((item.price || 0) * (item.quantity || 1));
-    }));
-    const topCats = Object.entries(catMap).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const r = await fetch(`${BASE}/dailyReports/${istDate}?key=${API_KEY}`);
+    const json = await r.json();
+    if (r.status !== 404 && !r.ok) return res.status(502).json({ error: 'Could not read report', detail: json });
 
     const dateLabel = new Date(istDate).toLocaleDateString('en-IN', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
     });
+    const data = json.fields ? parseFields(json.fields) : null;
+    const report = data
+      ? data.text
+      : `No report was uploaded for ${dateLabel}.\nThe cafe device uploads it after 10 PM when it has internet. It will appear in the owner reports view once the device is online.`;
 
-    const report =
-`Kaapfi 90's — Day-End Report
-Date: ${dateLabel}
-${'─'.repeat(30)}
-REVENUE
-  Cash   : Rs.${cashRev.toFixed(0)} (${cashOrders.length} orders)
-  UPI    : Rs.${upiRev.toFixed(0)} (${upiOrders.length} orders)
-  Card   : Rs.${cardRev.toFixed(0)} (${cardOrders.length} orders)
-  Total  : Rs.${totalRev.toFixed(0)} (${paidOrders.length} orders)
-${'─'.repeat(30)}
-ORDER TYPE
-  Dine-In  : ${dineIn}
-  Takeaway : ${takeaway}
-  Waiting  : ${waiting}
-${'─'.repeat(30)}
-EXPENSES
-  Cash : Rs.${cashExp.toFixed(0)}
-  UPI  : Rs.${upiExp.toFixed(0)}
-  Total: Rs.${totalExp.toFixed(0)}
-${'─'.repeat(30)}
-CLOSING SUMMARY
-  Net Cash in Hand : Rs.${netCash.toFixed(0)}
-  Net Profit       : Rs.${netProfit.toFixed(0)}
-${'─'.repeat(30)}
-${topCats.length > 0 ? `TOP CATEGORIES\n${topCats.map(([c, v]) => `  ${c}: Rs.${v.toFixed(0)}`).join('\n')}\n${'─'.repeat(30)}\n` : ''}Day closed automatically at 11 PM IST`;
-
-    // Send via EmailJS REST API
     const emailRes = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -142,8 +61,7 @@ ${topCats.length > 0 ? `TOP CATEGORIES\n${topCats.map(([c, v]) => `  ${c}: Rs.${
       const txt = await emailRes.text();
       return res.status(500).json({ error: 'EmailJS failed', detail: txt });
     }
-
-    return res.status(200).json({ ok: true, date: istDate, orders: paidOrders.length, revenue: totalRev });
+    return res.status(200).json({ ok: true, date: istDate, uploaded: !!data, revenue: data ? data.revenue.total : null });
   } catch (e) {
     return res.status(500).json({ error: String(e) });
   }
