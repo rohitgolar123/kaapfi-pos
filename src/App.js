@@ -13,6 +13,36 @@ const NO_VEG_MARK = /beverage|kaapfi hot|iced filter|cold brew|non coffee|water|
 const isNonVeg = (i) => i.veg === false || (i.veg !== true && (i.category === 'Eggs' || NON_VEG_WORDS.test(`${i.name || ''} ${i.variant || ''}`)));
 const vegTag = (i) => (NO_VEG_MARK.test(i.category || '') ? '' : isNonVeg(i) ? ' (Non-Veg)' : ' (Veg)');
 
+// The menu stores "Chicken Chatpata Sandwich" and "Paneer Chatpata Sandwich" as separate items. On the order screen
+// they are shown as one card ("Chatpata Sandwich") that asks which one. The stored menu is not changed, so each
+// option keeps its own price and its own line in bills and reports.
+const OPTION_WORD = /\b(chicken|paneer|veg)\b/i;
+function groupMenuOptions(items) {
+  const groups = new Map();
+  const slots = [];
+  items.forEach(item => {
+    const m = (item.name || '').match(OPTION_WORD);
+    if (!m) { slots.push(item); return; }
+    const base = item.name.replace(OPTION_WORD, '').replace(/\s+/g, ' ').trim();
+    const key = `${item.category}|${base.toLowerCase()}`;
+    if (!groups.has(key)) { groups.set(key, { key, base, options: [] }); slots.push(groups.get(key)); }
+    groups.get(key).options.push({ label: m[1][0].toUpperCase() + m[1].slice(1).toLowerCase(), item });
+  });
+  return slots.flatMap(slot => {
+    if (!slot.options) return [slot];
+    const labels = new Set(slot.options.map(o => o.label));
+    if (slot.options.length < 2 || labels.size !== slot.options.length) return slot.options.map(o => o.item); // nothing to choose between
+    const options = [...slot.options].sort((a, b) => isNonVeg(a.item) - isNonVeg(b.item)); // veg first
+    const prices = options.map(o => Number(o.item.price) || 0);
+    const min = Math.min(...prices), max = Math.max(...prices);
+    return [{
+      ...options[0].item, id: `group:${slot.key}`, name: slot.base, price: min,
+      priceLabel: min === max ? `₹${min}` : `₹${min} – ₹${max}`,
+      groupOptions: options, outOfStock: options.every(o => o.item.outOfStock),
+    }];
+  });
+}
+
 const CAFE_PASSWORD = "9923022925";
 const DELETE_PASSWORD = "9923022925";
 
@@ -1520,10 +1550,17 @@ function CafePOS() {
     await saveInventoryToCloud(newInventory);
   };
 
-  const [variantPick, setVariantPick] = useState(null); // menu item waiting for a Paneer/Chicken choice
+  const [variantPick, setVariantPick] = useState(null); // { name, options: [{ label, price, nonVeg, add }] } waiting for a choice
   const addToOrder = (menuItem, variant) => {
+    if (menuItem.groupOptions) {
+      setVariantPick({ name: menuItem.name, options: menuItem.groupOptions.map(o => ({ label: o.label, price: o.item.price, nonVeg: isNonVeg(o.item), item: o.item })) });
+      return;
+    }
     const options = menuItem.requiresVariant ? (menuItem.variantOptions || []) : [];
-    if (options.length > 0 && !variant) { setVariantPick(menuItem); return; }
+    if (options.length > 0 && !variant) {
+      setVariantPick({ name: menuItem.name, options: options.map(opt => ({ label: opt, price: menuItem.price, nonVeg: isNonVeg({ name: menuItem.name, variant: opt }), item: menuItem, variant: opt })) });
+      return;
+    }
     // Each option is its own line on the order, KOT and bill, e.g. "Chicken Chatpata Sandwich"
     const item = variant ? { ...menuItem, id: `${menuItem.id}-${variant}`, menuId: menuItem.id, name: `${variant} ${menuItem.name}`, variant } : menuItem;
     const existing = currentOrder.find(o => o.id === item.id);
@@ -2468,18 +2505,15 @@ function CafePOS() {
         <div onClick={() => setVariantPick(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', padding: '24px', borderRadius: '14px', width: '90%', maxWidth: '380px', textAlign: 'center' }}>
             <div style={{ fontSize: '18px', fontWeight: '800', color: '#000' }}>{variantPick.name}</div>
-            <div style={{ fontSize: '13px', color: '#666', margin: '4px 0 16px' }}>Choose one · ₹{variantPick.price}</div>
+            <div style={{ fontSize: '13px', color: '#666', margin: '4px 0 16px' }}>Choose one</div>
             <div style={{ display: 'flex', gap: '10px' }}>
-              {variantPick.variantOptions.map(opt => {
-                const nonVeg = isNonVeg({ name: variantPick.name, variant: opt });
-                return (
-                  <button key={opt} onClick={() => { addToOrder(variantPick, opt); setVariantPick(null); }}
-                    style={{ flex: 1, padding: '18px 8px', fontSize: '17px', fontWeight: '800', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', background: nonVeg ? '#C62828' : '#2E7D32' }}>
-                    {opt}
-                    <div style={{ fontSize: '11px', fontWeight: '700', opacity: 0.9 }}>{nonVeg ? 'Non-Veg' : 'Veg'}</div>
-                  </button>
-                );
-              })}
+              {variantPick.options.map(opt => (
+                <button key={opt.label} onClick={() => { addToOrder(opt.item, opt.variant); setVariantPick(null); }}
+                  style={{ flex: 1, padding: '18px 8px', fontSize: '17px', fontWeight: '800', color: '#fff', border: 'none', borderRadius: '10px', cursor: 'pointer', background: opt.nonVeg ? '#C62828' : '#2E7D32' }}>
+                  {opt.label}
+                  <div style={{ fontSize: '11px', fontWeight: '700', opacity: 0.9 }}>{opt.nonVeg ? 'Non-Veg' : 'Veg'} · ₹{opt.price}</div>
+                </button>
+              ))}
             </div>
             <button onClick={() => setVariantPick(null)} style={{ marginTop: '14px', background: 'none', border: 'none', color: '#666', fontSize: '13px', cursor: 'pointer' }}>Cancel</button>
           </div>
@@ -2824,13 +2858,14 @@ function CafePOS() {
                 ))}
               </div>}
               <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fill, minmax(150px, 1fr))', gap: isMobile ? '10px' : '12px' }}>
-                {filteredItems.map(item => {
+                {groupMenuOptions(filteredItems).map(item => {
                   return (
                     <div key={item.id} onClick={() => addToOrder(item)} style={{ background: item.outOfStock ? 'rgba(18,43,69,0.5)' : '#122B45', padding: isMobile ? '14px 10px' : '16px', borderRadius: '12px', cursor: item.outOfStock ? 'not-allowed' : 'pointer', textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)', opacity: item.outOfStock ? 0.5 : 1, position: 'relative' }}>
                       {isMobile && currentOrder.find(o => o.id === item.id) && <span style={{ position: 'absolute', top: '6px', right: '6px', background: '#FC8019', color: '#fff', borderRadius: '50%', width: '20px', height: '20px', fontSize: '11px', fontWeight: '800', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{currentOrder.find(o => o.id === item.id).quantity}</span>}
                       <div style={{ fontSize: isMobile ? '30px' : '36px', marginBottom: '6px', opacity: item.outOfStock ? 0.4 : 1 }}>{item.emoji}</div>
                       <div style={{ fontSize: isMobile ? '12px' : '13px', fontWeight: '700', color: '#fff', marginBottom: '4px', minHeight: isMobile ? '30px' : '36px' }}>{item.name}{item.outOfStock ? ' 🚫' : ''}</div>
-                      <div style={{ fontSize: '15px', color: '#FC8019', fontWeight: '800' }}>₹{item.price}</div>
+                      {item.groupOptions && <div style={{ fontSize: '10px', fontWeight: '700', color: '#8fb8dc', marginBottom: '2px' }}>{item.groupOptions.map(o => o.label).join(' / ')}</div>}
+                      <div style={{ fontSize: '15px', color: '#FC8019', fontWeight: '800' }}>{item.priceLabel || `₹${item.price}`}</div>
                     </div>
                   );
                 })}

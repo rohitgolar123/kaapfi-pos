@@ -1,7 +1,7 @@
 {
   "name": "kaapfi-pos",
-  "version": "6.4.0",
-  "releaseName": "One POS window only",
+  "version": "6.5.0",
+  "releaseName": "Paneer / Chicken choice on one card",
   "private": true,
   "dependencies": {
     "firebase": "^10.14.1",
