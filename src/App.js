@@ -1515,9 +1515,9 @@ function CafePOS() {
           alert('❌ Order could not be saved. Check your internet and try again.');
           return;
         }
-        // Order is in Firestore — kitchen sees it now. Clear form immediately.
+        // Paid, but the food is still in the kitchen: the table stays occupied until the kitchen marks it delivered.
         if (selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT') {
-          const u = { ...tableStatus, [selectedTable]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u);
+          const u = { ...tableStatus, [selectedTable]: 'occupied' }; setTableStatus(u); saveTableStatusToCloud(u);
         }
         const billOrderForPrint = { ...tempOrder, firebaseDocId };
         clearOrderForm();
@@ -1539,7 +1539,7 @@ function CafePOS() {
         return;
       }
       if (selectedTable && selectedTable !== 'T/A' && selectedTable !== 'WAIT') {
-        const u = { ...tableStatus, [selectedTable]: 'available' }; setTableStatus(u); saveTableStatusToCloud(u);
+        const u = { ...tableStatus, [selectedTable]: 'occupied' }; setTableStatus(u); saveTableStatusToCloud(u);
       }
       clearOrderForm();
       setSyncStatus('connected');
