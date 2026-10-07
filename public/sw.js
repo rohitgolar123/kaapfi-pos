@@ -38,7 +38,7 @@ function networkFirstPage(request) {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname === '/asset-manifest.json' || url.pathname === '/sw.js') return;
+  if (url.pathname.startsWith('/api/') || url.pathname === '/asset-manifest.json' || url.pathname === '/version.json' || url.pathname === '/sw.js') return;
 
   if (e.request.mode === 'navigate') { e.respondWith(networkFirstPage(e.request)); return; }
 

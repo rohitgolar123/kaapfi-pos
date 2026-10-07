@@ -1,6 +1,7 @@
 {
   "name": "kaapfi-pos",
-  "version": "5.2.0",
+  "version": "6.0.0",
+  "releaseName": "Offline billing, folder backup, update button",
   "private": true,
   "dependencies": {
     "firebase": "^10.14.1",
@@ -9,7 +10,9 @@
     "react-scripts": "5.0.1"
   },
   "scripts": {
+    "prestart": "node scripts/write-version.js",
     "start": "react-scripts start",
+    "prebuild": "node scripts/write-version.js",
     "build": "react-scripts build",
     "migrate:menu": "node scripts/migrate-menu.js"
   },

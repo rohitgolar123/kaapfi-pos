@@ -4,6 +4,7 @@ import { exportAll, importAll, requestPersistence } from './localdb';
 import { getSetup, importHistory, syncReports, getUploadStatus, getInstallId } from './sync';
 import { backupSupported, backupState, lastBackupAt, chooseBackupFolder, regrantBackupPermission, startAutoBackup } from './backup';
 import SetupScreen from './SetupScreen';
+import buildInfo from './buildInfo.json';
 import OwnerReports from './OwnerReports';
 
 const CAFE_PASSWORD = "9923022925";
@@ -536,26 +537,22 @@ function CafePOS() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Auto-reload when a new bundle is deployed — forces all devices to update without manual refresh
+  // New version check. The POS never reloads by itself (that could interrupt billing): it shows an Update button
+  // with the new version's name. The customer QR menu has no one to press a button, so it still reloads itself.
+  const [updateAvailable, setUpdateAvailable] = useState(null);
   useEffect(() => {
     const checkVersion = async () => {
       try {
-        const res = await fetch('/asset-manifest.json?t=' + Date.now());
-        const manifest = await res.json();
-        const latestBundle = manifest?.files?.['main.js'] || '';
-        const stored = localStorage.getItem('kaapfi_bundle');
-        if (stored && latestBundle && stored !== latestBundle) {
-          console.log('[AutoUpdate] New bundle detected, reloading...');
-          localStorage.setItem('kaapfi_bundle', latestBundle);
-          window.location.reload();
-        } else {
-          localStorage.setItem('kaapfi_bundle', latestBundle);
-        }
+        const latest = await (await fetch('/version.json?t=' + Date.now(), { cache: 'no-store' })).json();
+        if (!latest.builtAt || latest.builtAt === buildInfo.builtAt) return;
+        if (IS_PUBLIC_MENU) window.location.reload();
+        else setUpdateAvailable(latest);
       } catch (e) {}
     };
     checkVersion();
-    const versionCheck = setInterval(checkVersion, 60000); // check every 60s
-    return () => clearInterval(versionCheck);
+    const versionCheck = setInterval(checkVersion, 5 * 60000);
+    window.addEventListener('online', checkVersion);
+    return () => { clearInterval(versionCheck); window.removeEventListener('online', checkVersion); };
   }, []);
   const setViewMode = (mode) => { setViewModeOverride(mode); localStorage.setItem('kaapfi_viewMode', mode); };
   const [cashCalcInput, setCashCalcInput] = useState('');
@@ -2164,6 +2161,7 @@ function CafePOS() {
           <p style={{ fontSize: '11px', color: '#aaa', margin: '8px 0 0' }}>Manager = full access &nbsp;·&nbsp; Staff = order + KOT + bills only</p>
           <button onClick={() => setOwnerMode(true)} style={{ marginTop: '14px', background: 'none', border: 'none', color: '#E64A19', fontSize: '13px', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}>📊 Owner reports</button>
           <p style={{ marginTop: '16px', fontSize: '12px', color: '#666' }}>Developed by Telzon Marketing</p>
+          <p style={{ marginTop: '4px', fontSize: '11px', color: '#999' }}>{buildInfo.label}</p>
         </div>
       </div>
     );
@@ -2375,6 +2373,17 @@ function CafePOS() {
         </div>
       )}
 
+      {!isPublicMenuMode && updateAvailable && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', padding: '10px 16px', background: '#1565C0', color: '#fff', fontSize: '13px', fontWeight: '700' }}>
+          <span>🔄 Update available: {updateAvailable.label}</span>
+          <button onClick={async () => {
+            if (currentOrder.length > 0 && !window.confirm('The current order has items that are not saved yet. Updating now will clear them. Update anyway?')) return;
+            try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch (e) {}
+            window.location.reload();
+          }} style={{ padding: '6px 16px', background: '#fff', color: '#1565C0', border: 'none', borderRadius: '6px', fontWeight: '800', cursor: 'pointer', fontSize: '13px' }}>Update now</button>
+          <button onClick={() => setUpdateAvailable(null)} style={{ padding: '6px 12px', background: 'transparent', color: '#fff', border: '1px solid rgba(255,255,255,0.6)', borderRadius: '6px', fontWeight: '700', cursor: 'pointer', fontSize: '13px' }}>Later</button>
+        </div>
+      )}
       {!isPublicMenuMode && (folderBackup.state === 'none' || folderBackup.state === 'needs-permission') && (
         <button onClick={turnOnFolderBackup} style={{ display: 'block', width: '100%', padding: '10px 16px', background: '#B71C1C', color: '#fff', border: 'none', fontSize: '13px', fontWeight: '800', cursor: 'pointer', textAlign: 'center' }}>
           {folderBackup.state === 'none'
@@ -5230,6 +5239,7 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
 
                 {/* Full on-device data backup */}
                 <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', marginBottom: '10px' }}>App version: {buildInfo.label}</div>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>💾 All data is stored on this device</div>
                   <div style={{ fontSize: '12px', fontWeight: '700', margin: '6px 0', color: folderBackup.state === 'ok' ? '#69F0AE' : '#FFD54F' }}>
                     {folderBackup.state === 'ok' ? `✅ Automatic folder backup is ON${folderBackup.last ? ` — last saved ${new Date(folderBackup.last).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}`
