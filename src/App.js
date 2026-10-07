@@ -253,12 +253,13 @@ async function getNextKOTNumber() {
   const today = getISTDateStr();
   try {
     const ref = doc(db, "appData", "kotCounter");
-    const snap = await getDoc(ref);
+    const snap = await withTimeout(getDoc(ref), 5000);
     let newCount = 1;
     if (snap.exists() && snap.data().date === today) {
       newCount = (snap.data().count || 0) + 1;
     }
-    await setDoc(ref, { count: newCount, date: today });
+    // Never block an order on the server: if it is slow the write stays pending on this device and syncs later
+    await withTimeout(setDoc(ref, { count: newCount, date: today }), 3000).catch(() => {});
     return newCount;
   } catch (e) { return Date.now() % 1000; }
 }
@@ -266,12 +267,13 @@ async function getNextTokenNumber() {
   const today = getISTDateStr();
   try {
     const ref = doc(db, "appData", "tokenCounter");
-    const snap = await getDoc(ref);
+    const snap = await withTimeout(getDoc(ref), 5000);
     let newCount = 1;
     if (snap.exists() && snap.data().date === today) {
       newCount = (snap.data().count || 0) + 1;
     }
-    await setDoc(ref, { count: newCount, date: today });
+    // Never block an order on the server: if it is slow the write stays pending on this device and syncs later
+    await withTimeout(setDoc(ref, { count: newCount, date: today }), 3000).catch(() => {});
     return newCount;
   } catch (e) { return Date.now() % 100; }
 }
@@ -595,6 +597,7 @@ function CafePOS() {
   const [brainLog, setBrainLog] = useState(() => { try { return JSON.parse(localStorage.getItem('kaapfi_brainLog') || '[]'); } catch(e) { return []; } });
   const [brainStatus, setBrainStatus] = useState('idle'); // idle | running | fixed | alert
   const [lastBrainRun, setLastBrainRun] = useState(null);
+  const [dayKey, setDayKey] = useState(() => new Date().toDateString());
   // ── DataGuard state ──────────────────────────────────────────────────
   const [systemHealth, setSystemHealth] = useState({ status: 'healthy', menuCount: 0, lastCheck: null, lastBackup: null, incidentCount: 0 });
   const [recentIncidents, setRecentIncidents] = useState([]);
@@ -849,23 +852,17 @@ function CafePOS() {
     }, () => {});
 
     // ── KOT COUNTER: real-time listener ──────────────────────────────────
-    const kotToday = getISTDateStr();
+    // Read-only on purpose: a listener that writes back lets two devices overwrite each other forever.
+    // The daily reset happens in getNextKOTNumber when the first order of the day is placed.
     const unsubKot = onSnapshot(doc(db, 'appData', 'kotCounter'), (snap) => {
-      if (snap.exists()) {
-        const d = snap.data();
-        if (d.date !== kotToday) {
-          setDoc(doc(db, 'appData', 'kotCounter'), { count: 0, date: kotToday }).catch(() => {});
-          setKotDailyCounter(0);
-        } else setKotDailyCounter(d.count || 0);
-      } else {
-        setDoc(doc(db, 'appData', 'kotCounter'), { count: 0, date: kotToday }).catch(() => {});
-      }
+      const d = snap.exists() ? snap.data() : null;
+      setKotDailyCounter(d && d.date === getISTDateStr() ? (d.count || 0) : 0);
     }, () => {});
 
     // ── SOPs: real-time listener ──────────────────────────────────────────
     const unsubSops = onSnapshot(doc(db, 'appData', 'sops'), (snap) => {
       if (snap.exists() && snap.data().data) setMenuSOPs(snap.data().data);
-      else saveSOPsToCloud(defaultSOPs).catch(() => {});
+
     }, () => {});
 
     // ── TABLE STATUS: real-time listener ─────────────────────────────────
@@ -892,7 +889,13 @@ function CafePOS() {
       unsubSops(); unsubTableStatus2(); unsubWaitingQueue();
       unsubUpsellAdmin(); unsubUpsellSettingsAdmin();
     };
-  }, [isLoggedIn]); // eslint-disable-line
+  }, [isLoggedIn, dayKey]); // eslint-disable-line
+
+  // Re-subscribe at midnight so a device left open overnight shows the new day's orders
+  useEffect(() => {
+    const t = setInterval(() => setDayKey(k => { const now = new Date().toDateString(); return k === now ? k : now; }), 60000);
+    return () => clearInterval(t);
+  }, []);
 
   // PUBLIC MENU MODE - real-time Firebase listeners (no login needed)
   useEffect(() => {
@@ -918,7 +921,8 @@ function CafePOS() {
     const tLocked = tParam ? (tParam === 'TA' ? 'T/A' : parseInt(tParam)) : null;
     let unsubSession = () => {};
     if (tLocked && tLocked !== 'T/A') {
-      unsubSession = onSnapshot(collection(db, "orders"), (snap) => {
+      const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+      unsubSession = onSnapshot(query(collection(db, "orders"), where("timestamp", ">=", dayStart.toISOString())), (snap) => {
         const active = [];
         snap.forEach(d => {
           const o = d.data();
