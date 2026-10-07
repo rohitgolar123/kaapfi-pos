@@ -9,10 +9,11 @@ let dbPromise = null;
 function open() {
   if (!dbPromise) {
     dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = () => {
-        const store = req.result.createObjectStore(STORE, { keyPath: ['c', 'id'] });
-        store.createIndex('byTs', ['c', 'ts']);
+      const req = indexedDB.open(DB_NAME, 2);
+      req.onupgradeneeded = (e) => {
+        if (e.oldVersion < 1) req.result.createObjectStore(STORE, { keyPath: ['c', 'id'] }).createIndex('byTs', ['c', 'ts']);
+        // byM = last-modified time, so the automatic backup can save just what changed today
+        if (e.oldVersion < 2) req.transaction.objectStore(STORE).createIndex('byM', 'm');
       };
       req.onsuccess = () => {
         req.result.onversionchange = () => { req.result.close(); dbPromise = null; };
@@ -36,7 +37,7 @@ function run(mode, work) {
 }
 
 const clone = (d) => JSON.parse(JSON.stringify(d));
-const record = (c, id, data) => ({ c, id, ts: typeof data.timestamp === 'string' ? data.timestamp : '', d: clone(data) });
+const record = (c, id, data) => ({ c, id, ts: typeof data.timestamp === 'string' ? data.timestamp : '', m: Date.now(), d: clone(data) });
 const newId = () => {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let id = '';
@@ -48,7 +49,9 @@ const newId = () => {
 const listeners = new Map(); // collection -> Set<fn(id)>
 const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('kaapfi-local') : null;
 function fire(c, id) { (listeners.get(c) || []).forEach(fn => fn(id)); }
-function notify(c, id) { fire(c, id); if (channel) channel.postMessage({ c, id }); }
+const changeWatchers = new Set();
+export function onAnyChange(fn) { changeWatchers.add(fn); return () => changeWatchers.delete(fn); }
+function notify(c, id) { fire(c, id); changeWatchers.forEach(fn => fn()); if (channel) channel.postMessage({ c, id }); }
 if (channel) channel.onmessage = (e) => fire(e.data.c, e.data.id);
 
 // ── References ───────────────────────────────────────────────────────────────
@@ -149,8 +152,12 @@ export async function bulkPut(c, entries, { overwrite = false } = {}) {
   return written;
 }
 
-export async function exportAll() {
-  const rows = await run('readonly', (s, set) => { s.getAll().onsuccess = (e) => set(e.target.result); });
+// Pass `sinceMs` to export only records changed at or after that time.
+export async function exportAll(sinceMs) {
+  const rows = await run('readonly', (s, set) => {
+    const req = sinceMs ? s.index('byM').getAll(IDBKeyRange.lowerBound(sinceMs)) : s.getAll();
+    req.onsuccess = (e) => set(e.target.result);
+  });
   return { app: 'kaapfi-pos', version: 1, exportedAt: new Date().toISOString(), docs: (rows || []).map(r => ({ c: r.c, id: r.id, d: r.d })) };
 }
 

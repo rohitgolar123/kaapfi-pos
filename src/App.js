@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { IS_PUBLIC_MENU, db, collection, addDoc, getDocs, doc, setDoc, getDoc, updateDoc, query, where, deleteDoc, onSnapshot } from './datastore';
 import { exportAll, importAll, requestPersistence } from './localdb';
-import { getSetup, importHistory, syncReports, getUploadStatus } from './sync';
+import { getSetup, importHistory, syncReports, getUploadStatus, getInstallId } from './sync';
+import { backupSupported, backupState, lastBackupAt, chooseBackupFolder, regrantBackupPermission, startAutoBackup } from './backup';
 import SetupScreen from './SetupScreen';
 import OwnerReports from './OwnerReports';
 
@@ -295,6 +296,7 @@ async function apiWrite(op, path, data) {
 async function saveOrderToFirebase(order) {
   const ref = doc(collection(db, 'orders'));
   const orderData = { ...order, timestamp: new Date().toISOString() };
+  if (!IS_PUBLIC_MENU) orderData.device = await getInstallId(); // marks which device billed it, for the night report
   try {
     await withTimeout(setDoc(ref, orderData));
   } catch (e) {
@@ -590,6 +592,7 @@ function CafePOS() {
   const setupReady = setupState === 'done';
   const [ownerMode, setOwnerMode] = useState(() => !IS_PUBLIC_MENU && localStorage.getItem('kaapfi_deviceRole') === 'owner');
   const [reportSync, setReportSync] = useState({ busy: false, last: null, uploads: {} });
+  const [folderBackup, setFolderBackup] = useState({ state: 'checking', last: null });
   // ── DataGuard state ──────────────────────────────────────────────────
   const [systemHealth, setSystemHealth] = useState({ status: 'healthy', menuCount: 0, lastCheck: null, lastBackup: null, incidentCount: 0 });
   const [recentIncidents, setRecentIncidents] = useState([]);
@@ -933,6 +936,27 @@ function CafePOS() {
     window.addEventListener('online', tick);
     return () => { clearInterval(t); window.removeEventListener('online', tick); };
   }, [setupReady, ownerMode, runReportSync]);
+
+  // Automatic backup to a folder on the computer (survives uninstalling the app)
+  const refreshFolderBackup = React.useCallback(async () => {
+    setFolderBackup({ state: await backupState().catch(() => 'none'), last: lastBackupAt() });
+  }, []);
+  useEffect(() => {
+    if (IS_PUBLIC_MENU || ownerMode || !setupReady) return;
+    refreshFolderBackup();
+    return startAutoBackup(refreshFolderBackup);
+  }, [setupReady, ownerMode, refreshFolderBackup]);
+  const turnOnFolderBackup = async () => {
+    try {
+      if (folderBackup.state === 'needs-permission') { // browser needs a click to re-allow the same folder
+        if (!(await regrantBackupPermission())) alert('Backup was not allowed. Tap again and choose "Allow".');
+      } else {
+        const name = await chooseBackupFolder();
+        alert(`✅ Automatic backup is on.\n\nEverything is now saved to the folder "${name}" within a minute of every change. If the app is ever uninstalled, reinstall it and choose "Restore from backup folder".`);
+      }
+    } catch (e) { if (e.name !== 'AbortError') alert('❌ Could not set up the backup folder: ' + (e.message || e)); }
+    refreshFolderBackup();
+  };
 
   // PUBLIC MENU MODE - real-time Firebase listeners (no login needed)
   useEffect(() => {
@@ -2351,6 +2375,13 @@ function CafePOS() {
         </div>
       )}
 
+      {!isPublicMenuMode && (folderBackup.state === 'none' || folderBackup.state === 'needs-permission') && (
+        <button onClick={turnOnFolderBackup} style={{ display: 'block', width: '100%', padding: '10px 16px', background: '#B71C1C', color: '#fff', border: 'none', fontSize: '13px', fontWeight: '800', cursor: 'pointer', textAlign: 'center' }}>
+          {folderBackup.state === 'none'
+            ? '⚠ Automatic backup is OFF — data is only inside this app. Tap here to choose a backup folder on this computer.'
+            : '⚠ Automatic backup is paused — tap here and choose "Allow" to resume saving to the backup folder.'}
+        </button>
+      )}
       {!isPublicMenuMode && <header style={{ background: 'linear-gradient(135deg, #FC8019 0%, #E64A19 100%)', padding: '16px 24px', position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ maxWidth: '1400px', margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -5200,7 +5231,18 @@ ${topCats.length > 0 ? `📦 *TOP CATEGORIES*\n${topCats.map(([c,v])=>`  ${c}: �
                 {/* Full on-device data backup */}
                 <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
                   <div style={{ fontSize: '13px', fontWeight: '800', color: '#fff' }}>💾 All data is stored on this device</div>
-                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', margin: '4px 0 10px' }}>If this device is lost or broken, the only copy is a backup file. Download one regularly and keep it somewhere else (email it to yourself or save it to a pen drive).</div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', margin: '6px 0', color: folderBackup.state === 'ok' ? '#69F0AE' : '#FFD54F' }}>
+                    {folderBackup.state === 'ok' ? `✅ Automatic folder backup is ON${folderBackup.last ? ` — last saved ${new Date(folderBackup.last).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}`
+                      : folderBackup.state === 'unsupported' ? '⚠ This browser cannot save to a folder automatically. Use Chrome or Edge on a computer, or download backups by hand below.'
+                      : folderBackup.state === 'needs-permission' ? '⚠ Automatic folder backup is paused — permission needed'
+                      : '⚠ Automatic folder backup is OFF'}
+                  </div>
+                  {backupSupported && (
+                    <button onClick={turnOnFolderBackup} style={{ padding: '10px 20px', background: 'rgba(105,240,174,0.15)', color: '#69F0AE', border: '1px solid rgba(105,240,174,0.4)', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '13px', marginBottom: '10px' }}>
+                      📁 {folderBackup.state === 'needs-permission' ? 'Resume automatic backup' : folderBackup.state === 'ok' ? 'Change backup folder' : 'Choose backup folder'}
+                    </button>
+                  )}
+                  <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.6)', margin: '4px 0 10px' }}>The backup folder protects against the app being uninstalled or its data cleared. It does not protect against the computer itself being lost or its disk failing — for that, also copy a backup to a pen drive or email now and then.</div>
                   <button onClick={async () => {
                     const dump = await exportAll();
                     const url = URL.createObjectURL(new Blob([JSON.stringify(dump)], { type: 'application/json' }));

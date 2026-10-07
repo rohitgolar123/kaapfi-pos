@@ -23,6 +23,15 @@ function withTimeout(promise, ms) {
 const metaRef = (id) => local.doc(null, 'meta', id);
 async function readMeta(id) { const s = await local.getDoc(metaRef(id)); return s.exists() ? s.data() : null; }
 
+// Identifies this installation. Stamped on every order it takes, and restored along with a backup.
+export async function getInstallId() {
+  const existing = await readMeta('install');
+  if (existing) return existing.id;
+  const id = Math.random().toString(36).slice(2, 8);
+  await local.setDoc(metaRef('install'), { id, createdAt: new Date().toISOString() });
+  return id;
+}
+
 // ═══ 1. ONE-TIME SETUP ═══════════════════════════════════════════════════════
 
 export async function getSetup() { return readMeta('setup'); }
@@ -67,6 +76,12 @@ export async function runSetup({ allowDefaults = false } = {}) {
   };
   await local.setDoc(metaRef('setup'), info);
   return info;
+}
+
+// After a restore, make sure the device counts as set up even if the backup predates that marker.
+export async function markSetupDone() {
+  const existing = await getSetup();
+  if (!existing || !existing.done) await local.setDoc(metaRef('setup'), { done: true, at: new Date().toISOString(), historyDone: true, menuSource: 'backup' });
 }
 
 export async function setupFromBackup(dump) {
@@ -197,14 +212,18 @@ export async function syncReports({ force = false } = {}) {
 
     const uploads = await getUploadStatus();
     const floor = istDate(since);
-    const dates = new Set([...orders.map(orderDate), ...expenses.map(expenseDate)].filter(d => d && d >= floor && d < today));
-    if (includeToday) dates.add(today);
+    // Only days this device itself billed on: a second copy of the app (a trial install, a restored laptop)
+    // holds the same imported history and must not replace the real device's report with stale numbers.
+    const me = await getInstallId();
+    const mine = new Set(orders.filter(o => o.device === me).map(orderDate));
+    const dates = new Set([...mine].filter(d => d && d >= floor && (d < today || includeToday)));
+    if (force) dates.add(today);
 
     const uploaded = [];
     for (const date of [...dates].sort()) {
       const report = buildDayReport(date, orders, expenses, cafeName);
       const h = hash(report);
-      if (uploads[date] && uploads[date].hash === h) continue;
+      if (uploads[date] && uploads[date].hash === h && !(force && date === today)) continue;
       await withTimeout(cSetDoc(cDoc(cloudDb, 'dailyReports', date), { ...report, uploadedAt: new Date().toISOString() }), 15000);
       uploads[date] = { hash: h, at: new Date().toISOString() };
       await local.setDoc(metaRef('reportUploads'), uploads);
