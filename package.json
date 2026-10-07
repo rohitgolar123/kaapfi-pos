@@ -1,7 +1,7 @@
 {
   "name": "kaapfi-pos",
-  "version": "6.3.0",
-  "releaseName": "Full menu restored (84 items + Water Bottle, Bhuna, Eggs)",
+  "version": "6.3.1",
+  "releaseName": "Customer QR menu page switched off",
   "private": true,
   "dependencies": {
     "firebase": "^10.14.1",
