@@ -8,9 +8,10 @@ import buildInfo from './buildInfo.json';
 import OwnerReports from './OwnerReports';
 
 // Veg / Non-veg: an item can set `veg` itself; otherwise it is worked out from its name and chosen option.
-const NON_VEG_WORDS = /chicken|egg|mutton|fish|prawn|meat/i;
-const isNonVeg = (i) => i.veg === false || (i.veg !== true && NON_VEG_WORDS.test(`${i.name || ''} ${i.variant || ''}`));
-const vegTag = (i) => (i.category === 'BEVERAGES' ? '' : isNonVeg(i) ? ' (Non-Veg)' : ' (Veg)');
+const NON_VEG_WORDS = /chicken|egg|omel|omlet|mutton|fish|prawn|meat/i;
+const NO_VEG_MARK = /beverage|kaapfi hot|iced filter|cold brew|non coffee|water|reservation/i; // drinks and non-food
+const isNonVeg = (i) => i.veg === false || (i.veg !== true && (i.category === 'Eggs' || NON_VEG_WORDS.test(`${i.name || ''} ${i.variant || ''}`)));
+const vegTag = (i) => (NO_VEG_MARK.test(i.category || '') ? '' : isNonVeg(i) ? ' (Non-Veg)' : ' (Veg)');
 
 const CAFE_PASSWORD = "9923022925";
 const DELETE_PASSWORD = "9923022925";
@@ -40,70 +41,95 @@ const defaultSettings = {
   takeawayLabel: 'Takeaway',
 };
 
+// The café's real menu, recovered from the 7 Oct 2026 snapshot. This is also the fallback whenever the stored menu
+// cannot be read, so the fallback must always be the real menu and never a placeholder.
 const defaultMenu = [
-  // BEVERAGES - KAAPI (HOT) - 5 items
-  { id: 1, name: 'Milk Filter Coffee', price: 49, category: 'BEVERAGES', subcategory: 'KAAPI (HOT)', emoji: '☕', requiresVariant: false },
-  { id: 2, name: 'Black Filter Coffee', price: 30, category: 'BEVERAGES', subcategory: 'KAAPI (HOT)', emoji: '☕', requiresVariant: false },
-  { id: 3, name: 'Classic Kaapi', price: 119, category: 'BEVERAGES', subcategory: 'KAAPI (HOT)', emoji: '☕', requiresVariant: false },
-  { id: 4, name: 'Kaapi Mocha', price: 129, category: 'BEVERAGES', subcategory: 'KAAPI (HOT)', emoji: '☕', requiresVariant: false },
-  { id: 5, name: 'Kaapi Haze', price: 129, category: 'BEVERAGES', subcategory: 'KAAPI (HOT)', emoji: '☕', requiresVariant: false },
-  // BEVERAGES - ICED FILTER KAAPI - 10 items
-  { id: 6, name: 'Kaapi Classic Iced Filter', price: 110, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '🧊', requiresVariant: false },
-  { id: 7, name: 'Hazelnut Iced Filter', price: 125, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '🧊', requiresVariant: false },
-  { id: 8, name: 'Vanilla Iced Filter', price: 125, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '🧊', requiresVariant: false },
-  { id: 9, name: 'Sea Salt Caramel Latte', price: 139, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '🧊', requiresVariant: false },
-  { id: 10, name: 'Strawberry Iced', price: 125, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '🍓', requiresVariant: false },
-  { id: 11, name: 'Iced Mocha', price: 125, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '☕', requiresVariant: false },
-  { id: 12, name: 'Roafza Iced Latte', price: 125, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '🌸', requiresVariant: false },
-  { id: 13, name: 'Iced Caramel Latte', price: 125, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '🧊', requiresVariant: false },
-  { id: 14, name: 'Mocha Haze', price: 159, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '☕', requiresVariant: false },
-  { id: 15, name: 'Strawberry Iced Mocha', price: 149, category: 'BEVERAGES', subcategory: 'ICED FILTER KAAPI', emoji: '🍓', requiresVariant: false },
-  // BEVERAGES - COLD BREW - 13 items
-  { id: 16, name: 'Classic Cold Brew', price: 100, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '❄️', requiresVariant: false },
-  { id: 17, name: 'Cranberry Cold Brew', price: 120, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🔴', requiresVariant: false },
-  { id: 18, name: 'Orange Cold Brew', price: 120, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🍊', requiresVariant: false },
-  { id: 19, name: 'Ginger Ale Cold Brew', price: 120, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🫚', requiresVariant: false },
-  { id: 20, name: 'Tonic Cold Brew', price: 120, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '💧', requiresVariant: false },
-  { id: 21, name: 'Kacha Aam Cold Brew', price: 125, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🥭', requiresVariant: false },
-  { id: 22, name: 'Rose Cold Brew', price: 125, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🌹', requiresVariant: false },
-  { id: 23, name: 'Roafza Cold Brew', price: 125, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🌸', requiresVariant: false },
-  { id: 24, name: 'Strawberry Cold Brew', price: 130, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🍓', requiresVariant: false },
-  { id: 25, name: 'Kokam Cold Brew', price: 130, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🍒', requiresVariant: false },
-  { id: 26, name: 'Blue Ocean Cold Brew', price: 130, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🌊', requiresVariant: false },
-  { id: 27, name: 'Vietnamese Cold Brew (with Milk)', price: 159, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '☕', requiresVariant: false },
-  { id: 28, name: 'Last Light', price: 159, category: 'BEVERAGES', subcategory: 'COLD BREW', emoji: '🌙', requiresVariant: false },
-  // BEVERAGES - NON COFFEE - 3 items
-  { id: 29, name: 'Coastal Blue', price: 129, category: 'BEVERAGES', subcategory: 'NON COFFEE', emoji: '🌊', requiresVariant: false },
-  { id: 30, name: 'Berry Bloom', price: 129, category: 'BEVERAGES', subcategory: 'NON COFFEE', emoji: '🫐', requiresVariant: false },
-  { id: 31, name: 'Red Mood', price: 129, category: 'BEVERAGES', subcategory: 'NON COFFEE', emoji: '🔴', requiresVariant: false },
-  // GOURMET SANDWICHES - 4 items with REQUIRED Protein variant
-  { id: 32, name: 'Chatpata Sandwich', price: 189, category: 'GOURMET SANDWICHES', emoji: '🥪', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 33, name: 'Barbecue Sandwich', price: 189, category: 'GOURMET SANDWICHES', emoji: '🥪', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 34, name: 'Makhanwala Sandwich', price: 189, category: 'GOURMET SANDWICHES', emoji: '🥪', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 35, name: '1996 Carolina Sandwich', price: 189, category: 'GOURMET SANDWICHES', emoji: '🥪', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  // FRIES - 8 items
-  { id: 36, name: 'Salted Fries', price: 179, category: 'FRIES', emoji: '🍟', requiresVariant: false },
-  { id: 37, name: 'Salt & Pepper Fries', price: 179, category: 'FRIES', emoji: '🍟', requiresVariant: false },
-  { id: 38, name: 'Peri Peri Fries', price: 179, category: 'FRIES', emoji: '🍟', requiresVariant: false },
-  { id: 39, name: 'Kolhapuri Spicy Fries', price: 179, category: 'FRIES', emoji: '🍟', requiresVariant: false },
-  { id: 40, name: 'Desi Fries (Tangy & Spicy)', price: 179, category: 'FRIES', emoji: '🍟', requiresVariant: false },
-  { id: 41, name: '1990s Achari Fries', price: 179, category: 'FRIES', emoji: '🍟', requiresVariant: false },
-  { id: 42, name: 'Smoky Barbecue Fries', price: 179, category: 'FRIES', emoji: '🍟', requiresVariant: false, modifierGroups: [{ name: 'Sauce', options: ['BBQ Sauce Dressing'] }] },
-  { id: 43, name: '1996 Carolina Fries', price: 179, category: 'FRIES', emoji: '🍟', requiresVariant: false, modifierGroups: [{ name: 'Sauce', options: ['Carolina Sauce Dressing'] }] },
-  // TIFFIN - IDLI - 2 items
-  { id: 44, name: 'Idli with Veg Curry', price: 80, category: 'TIFFIN', subcategory: 'IDLI', emoji: '🍚', requiresVariant: false },
-  { id: 45, name: 'Idli with Chicken Curry', price: 100, category: 'TIFFIN', subcategory: 'IDLI', emoji: '🍗', requiresVariant: false },
-  // MALABAR PARATHA - 7 items with REQUIRED Protein variant
-  { id: 46, name: 'Chatpata', price: 139, category: 'MALABAR PARATHA', emoji: '🫓', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 47, name: 'Saoji', price: 139, category: 'MALABAR PARATHA', emoji: '🫓', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 48, name: 'Makhanwala', price: 139, category: 'MALABAR PARATHA', emoji: '🫓', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 49, name: 'Achari', price: 139, category: 'MALABAR PARATHA', emoji: '🫓', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 50, name: 'Smokey BBQ', price: 139, category: 'MALABAR PARATHA', emoji: '🫓', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 51, name: 'Burnt Garlic', price: 139, category: 'MALABAR PARATHA', emoji: '🫓', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  { id: 52, name: '1996 Carolina', price: 139, category: 'MALABAR PARATHA', emoji: '🫓', requiresVariant: true, variantGroup: 'Protein', variantOptions: ['Paneer', 'Chicken'] },
-  // IRANI PAV - 2 items
-  { id: 53, name: 'Chicken Keema Irani Pav', price: 189, category: 'IRANI PAV', emoji: '🥪', requiresVariant: false },
-  { id: 54, name: 'Paneer Keema Irani Pav', price: 189, category: 'IRANI PAV', emoji: '🥪', requiresVariant: false },
+  { id: 1, name: "Milk Filter Coffee", price: 49, category: "Kaapfi Hot", emoji: "☕" },
+  { id: 2, name: "Black Filter Coffee", price: 30, category: "Kaapfi Hot", emoji: "☕" },
+  { id: 3, name: "Classic Kaapfi", price: 119, category: "Kaapfi Hot", emoji: "☕" },
+  { id: 4, name: "Kaapfi Mocha", price: 129, category: "Kaapfi Hot", emoji: "☕" },
+  { id: 5, name: "Kaapfi Haze", price: 129, category: "Kaapfi Hot", emoji: "☕" },
+  { id: 6, name: "Kaapfi Classic Iced Filter", price: 110, category: "Iced Filter", emoji: "🧋" },
+  { id: 7, name: "Hazelnut Iced Filter", price: 125, category: "Iced Filter", emoji: "🧋" },
+  { id: 8, name: "Vanilla Iced Filter", price: 125, category: "Iced Filter", emoji: "🧋" },
+  { id: 9, name: "Sea Salt Caramel Latte", price: 139, category: "Iced Filter", emoji: "🧋" },
+  { id: 10, name: "Strawberry Iced", price: 125, category: "Iced Filter", emoji: "🧋" },
+  { id: 11, name: "Iced Mocha", price: 125, category: "Iced Filter", emoji: "🧋" },
+  { id: 12, name: "Rofaza Iced Latte", price: 125, category: "Iced Filter", emoji: "🧋" },
+  { id: 13, name: "Iced Caramel Latte", price: 125, category: "Iced Filter", emoji: "🧋" },
+  { id: 14, name: "Mocha Haze", price: 159, category: "Iced Filter", emoji: "🧋" },
+  { id: 15, name: "Strawberry Iced Mocha", price: 149, category: "Iced Filter", emoji: "🧋" },
+  { id: 16, name: "Classic Cold Brew", price: 100, category: "Cold Brew", emoji: "🧊" },
+  { id: 17, name: "Cranberry Cold Brew", price: 120, category: "Cold Brew", emoji: "🧊" },
+  { id: 18, name: "Orange Cold Brew", price: 120, category: "Cold Brew", emoji: "🧊" },
+  { id: 19, name: "Ginger Ale Cold Brew", price: 120, category: "Cold Brew", emoji: "🧊" },
+  { id: 20, name: "Tonic Cold Brew", price: 120, category: "Cold Brew", emoji: "🧊" },
+  { id: 21, name: "Kacha Aam Cold Brew", price: 125, category: "Cold Brew", emoji: "🧊" },
+  { id: 22, name: "Rose Cold Brew", price: 125, category: "Cold Brew", emoji: "🧊" },
+  { id: 23, name: "Roafza Cold Brew", price: 125, category: "Cold Brew", emoji: "🧊" },
+  { id: 24, name: "Strawberry Cold Brew", price: 130, category: "Cold Brew", emoji: "🧊" },
+  { id: 25, name: "Kokam Cold Brew", price: 130, category: "Cold Brew", emoji: "🧊" },
+  { id: 26, name: "Blue Ocean Cold Brew", price: 130, category: "Cold Brew", emoji: "🧊" },
+  { id: 27, name: "Vietnamese Cold Brew", price: 159, category: "Cold Brew", emoji: "🧊" },
+  { id: 28, name: "Last Light", price: 159, category: "Cold Brew", emoji: "🧊" },
+  { id: 29, name: "Coastal Blue", price: 129, category: "Non Coffee", emoji: "🥤" },
+  { id: 30, name: "Berry Bloom", price: 129, category: "Non Coffee", emoji: "🥤" },
+  { id: 31, name: "Red Mood", price: 129, category: "Non Coffee", emoji: "🥤" },
+  { id: 32, name: "Chicken Chatpata Sandwich", price: 189, category: "Gourmet Sandwich", emoji: "🥪" },
+  { id: 33, name: "Paneer Chatpata Sandwich", price: 189, category: "Gourmet Sandwich", emoji: "🥪" },
+  { id: 34, name: "Chicken Barbecue Sandwich", price: 189, category: "Gourmet Sandwich", emoji: "🥪" },
+  { id: 35, name: "Paneer Barbecue Sandwich", price: 189, category: "Gourmet Sandwich", emoji: "🥪" },
+  { id: 36, name: "Chicken Makhanwala Sandwich", price: 189, category: "Gourmet Sandwich", emoji: "🥪" },
+  { id: 37, name: "Paneer Makhanwala Sandwich", price: 189, category: "Gourmet Sandwich", emoji: "🥪" },
+  { id: 38, name: "1996 Carolina Chicken Sandwich", price: 189, category: "Gourmet Sandwich", emoji: "🥪" },
+  { id: 39, name: "1996 Carolina Paneer Sandwich", price: 189, category: "Gourmet Sandwich", emoji: "🥪" },
+  { id: 40, name: "Salted Fries", price: 179, category: "Fries", emoji: "🍟" },
+  { id: 41, name: "Salt & Pepper Fries", price: 179, category: "Fries", emoji: "🍟" },
+  { id: 42, name: "Peri Peri Fries", price: 179, category: "Fries", emoji: "🍟" },
+  { id: 43, name: "Kolhapuri Spicy Fries", price: 179, category: "Fries", emoji: "🍟" },
+  { id: 44, name: "Desi Fries", price: 179, category: "Fries", emoji: "🍟" },
+  { id: 45, name: "1990s Achari Fries", price: 179, category: "Fries", emoji: "🍟" },
+  { id: 46, name: "Smoky Barbecue Fries", price: 179, category: "Fries", emoji: "🍟" },
+  { id: 47, name: "1996 Carolina Fries", price: 179, category: "Fries", emoji: "🍟" },
+  { id: 48, name: "Idli with Veg Curry", price: 80, category: "Tiffin", emoji: "🍱" },
+  { id: 49, name: "Idli with Chicken Curry", price: 100, category: "Tiffin", emoji: "🍱" },
+  { id: 50, name: "Paneer Chatpata Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 51, name: "Paneer Saoji Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 52, name: "Paneer Makkhanwala Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 53, name: "Paneer Achari Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 54, name: "Smokey BBQ Paneer Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 55, name: "Burnt Garlic Paneer Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 56, name: "1996 Carolina Paneer Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 57, name: "Chicken Chatpata Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 58, name: "Chicken Saoji Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 59, name: "Chicken Makkhanwala Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 60, name: "Chicken Achari Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 61, name: "Smokey BBQ Chicken Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 62, name: "Burnt Garlic Chicken Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 63, name: "1996 Carolina Chicken Paratha", price: 139, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 64, name: "Chicken Keema Irani Pav", price: 189, category: "Irani Pav", emoji: "🥙" },
+  { id: 65, name: "Paneer Keema Irani Pav", price: 189, category: "Irani Pav", emoji: "🥙" },
+  { id: 66, name: "kema with paratha", price: 189, category: "Irani Pav", emoji: "☕" },
+  { id: 67, name: "extra paratha", price: 49, category: "Malabar Paratha", emoji: "🍽️" },
+  { id: 68, name: "Water Bottle", price: 20, category: "Water Bottle", emoji: "💧" },
+  { id: 69, name: "Extra Pav", price: 50, category: "Irani Pav", emoji: "🍽️" },
+  { id: 70, name: "Special Reservation (Time:1:30 MIn)", price: 2000, category: "Special Occupancy(Reservation)", emoji: "🏷️" },
+  { id: 71, name: "Extra Paratha", price: 50, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 72, name: "Bhuna Chicken Malabar Paratha", price: 180, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 73, name: "Bhuna Paneer Malabar Paratha", price: 180, category: "Malabar Paratha", emoji: "🫓" },
+  { id: 74, name: "Plain Omlette", price: 80, category: "Eggs", emoji: "🍳" },
+  { id: 75, name: "Masala Omelette", price: 99, category: "Eggs", emoji: "🥘" },
+  { id: 76, name: "Egg Bhurji (With Pav/Paratha)", price: 139, category: "Eggs", emoji: "˙✧˖°🍳 ༘ ⋆｡˚" },
+  { id: 77, name: "Scrambeld Eggs (With Pav)", price: 139, category: "Eggs", emoji: "🥚" },
+  { id: 78, name: "Butter Garlic Creamy Eggs(With Pav)", price: 149, category: "Eggs", emoji: "🥘🍳🔥" },
+  { id: 79, name: "Chatpata Scrambeld Eggs (With Paratha)", price: 189, category: "Eggs", emoji: "🥘" },
+  { id: 80, name: "Mahanwala Scrambeld Eggs (With Paratha)", price: 189, category: "Eggs", emoji: "🥘" },
+  { id: 81, name: "Saoji  Scrambeld Eggs (With Paratha)", price: 189, category: "Eggs", emoji: "🥘" },
+  { id: 82, name: "Extra Chesse", price: 20, category: "Eggs", emoji: "🧀" },
+  { id: 83, name: "Extra Paratha", price: 50, category: "Malabar Paratha", emoji: "🍽️" },
+  { id: 84, name: "Cheese Omlette With Fries", price: 149, category: "Eggs", emoji: "🍽️" },
+  { id: 85, name: "Kaapfi Vanilla", price: 129, category: "Kaapfi Hot", emoji: "☕" },
+  { id: 86, name: "Add-on Cheese Slice", price: 50, category: "Gourmet Sandwich", emoji: "🧀" },
 ];
 
 const defaultInventory = [
@@ -149,7 +175,40 @@ async function saveExpensesToCloud(expenses) {
 }
 
 async function saveMenuToCloud(menu) {
-  try { await apiWrite('set', 'appData/menu', { items: menu, updatedAt: new Date().toISOString() }); return true; } catch (e) { return false; }
+  try {
+    // If a save would make the menu shorter, keep the previous version first so it can always be brought back.
+    const prev = await getDoc(doc(db, 'appData', 'menu'));
+    const prevItems = prev.exists() ? (prev.data().items || []) : [];
+    if (prevItems.length > menu.length) {
+      await setDoc(doc(db, 'backups', `menu_before_change_${Date.now()}`), { items: prevItems, count: prevItems.length, savedAt: new Date().toISOString(), source: 'before_shrinking_save' });
+    }
+    await apiWrite('set', 'appData/menu', { items: menu, updatedAt: new Date().toISOString() });
+    return true;
+  } catch (e) { return false; }
+}
+
+// One-time repair. On 7 Oct 2026 the cloud was unreadable (quota), the app fell back to a built-in placeholder menu,
+// and the next menu edit saved that placeholder over the real menu. This puts the real menu back on devices that
+// are still holding the placeholder. The replaced copy is kept, and items added since are carried over.
+async function repairPlaceholderMenu() {
+  const flagRef = doc(db, 'meta', 'menuRepair');
+  if ((await getDoc(flagRef)).exists()) return false;
+  const snap = await getDoc(doc(db, 'appData', 'menu'));
+  const items = snap.exists() ? (snap.data().items || []) : [];
+  const isPlaceholder = items.some(i => i.name === 'Classic Kaapi' && i.category === 'BEVERAGES');
+  if (isPlaceholder) {
+    await setDoc(doc(db, 'backups', `menu_placeholder_${Date.now()}`), { items, count: items.length, savedAt: new Date().toISOString(), source: 'replaced_by_repair' });
+    const known = defaultMenu.map(i => i.name.toLowerCase());
+    const added = items.filter(i => Number(i.id) > 54 && !known.some(n => n.includes(String(i.name || '').trim().toLowerCase())));
+    let nextId = Math.max(...defaultMenu.map(i => i.id));
+    const menu = [...defaultMenu, ...added.map(i => ({ ...i, id: ++nextId }))];
+    const cats = [...new Set(menu.map(i => i.category))];
+    await setDoc(doc(db, 'appData', 'menu'), { items: menu, updatedAt: new Date().toISOString() });
+    await setDoc(doc(db, 'appData', 'categories'), { items: cats, updatedAt: new Date().toISOString() });
+    try { localStorage.setItem('customCategories', JSON.stringify(cats)); } catch (e) {}
+  }
+  await setDoc(flagRef, { at: new Date().toISOString(), replaced: isPlaceholder });
+  return isPlaceholder;
 }
 
 async function saveSOPsToCloud(sops) {
@@ -621,6 +680,7 @@ function CafePOS() {
   const lastMenuBackupRef = useRef(null);
   const syncStatusRef = useRef('connected');
   const tableCountRef = useRef(10);
+  const activeTablesRef = useRef(new Set()); // tables that have an open order today
 
   // ── Direct thermal printer (USB Serial + Bluetooth / ESC-POS) ─────────────
   const serialPortRef = useRef(null);
@@ -825,6 +885,7 @@ function CafePOS() {
           todayOrders.filter(o => (o.status || '') !== 'delivered' && o.tableNumber && o.tableNumber !== 'T/A' && o.tableNumber !== 'WAIT')
                      .map(o => String(o.tableNumber))
         );
+        activeTablesRef.current = activeTableNums;
         setTableStatus(prev => {
           const next = { ...prev };
           for (let n = 1; n <= (tableCountRef.current || 10); n++) {
@@ -905,7 +966,14 @@ function CafePOS() {
 
     // ── TABLE STATUS: real-time listener ─────────────────────────────────
     const unsubTableStatus2 = onSnapshot(doc(db, 'appData', 'tableStatus'), (snap) => {
-      if (snap.exists() && snap.data().data) setTableStatus(prev => ({ ...prev, ...snap.data().data }));
+      // A saved "occupied" only counts while the table still has an open order (e.g. not after its bill was removed)
+      if (snap.exists() && snap.data().data) setTableStatus(prev => {
+        const next = { ...prev };
+        Object.entries(snap.data().data).forEach(([n, status]) => {
+          next[n] = status === 'occupied' && !activeTablesRef.current.has(String(n)) ? 'available' : status;
+        });
+        return next;
+      });
     }, () => {});
 
     // ── WAITING QUEUE: real-time listener ────────────────────────────────
@@ -939,7 +1007,10 @@ function CafePOS() {
   useEffect(() => {
     if (IS_PUBLIC_MENU) return;
     requestPersistence();
-    getSetup().then(s => setSetupState(s && s.done ? 'done' : 'needed')).catch(() => setSetupState('needed'));
+    getSetup().then(async (s) => {
+      if (s && s.done) await repairPlaceholderMenu().catch(() => {});
+      setSetupState(s && s.done ? 'done' : 'needed');
+    }).catch(() => setSetupState('needed'));
   }, []);
 
   // Summary tab on a past date: read that day's orders from the device. The main `orders` list stays today-only
@@ -2196,7 +2267,7 @@ function CafePOS() {
   }
   if (setupState === 'checking') return <div style={{ minHeight: '100vh', background: '#FC8019' }} />;
   if (setupState === 'needed') {
-    return <SetupScreen autoStart={!!localStorage.getItem('kaapfi_loggedIn')} onDone={() => setSetupState('done')}
+    return <SetupScreen autoStart={!!localStorage.getItem('kaapfi_loggedIn')} onDone={async () => { await repairPlaceholderMenu().catch(() => {}); setSetupState('done'); }}
       onOwner={() => { localStorage.setItem('kaapfi_deviceRole', 'owner'); setOwnerMode(true); }} />;
   }
 

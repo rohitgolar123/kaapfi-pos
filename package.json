@@ -1,7 +1,7 @@
 {
   "name": "kaapfi-pos",
-  "version": "6.2.0",
-  "releaseName": "Paneer/Chicken choice, Veg/Non-Veg on bill, nothing deleted",
+  "version": "6.3.0",
+  "releaseName": "Full menu restored (84 items + Water Bottle, Bhuna, Eggs)",
   "private": true,
   "dependencies": {
     "firebase": "^10.14.1",
